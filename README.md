@@ -1,2 +1,1 @@
-# kenesparta.dev
-Main website
+# Welcome to my personal site
