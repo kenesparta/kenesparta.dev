@@ -1,0 +1,29 @@
+name: Build Go Binary
+
+on:
+  push:
+    branches: ['main']
+
+jobs:
+  build-go:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: server/go.sum
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-binary
+          path: server/
