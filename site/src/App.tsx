@@ -1,9 +1,10 @@
 import './App.css'
+import Profile from "./profile/Profile.tsx";
 
 function App() {
   return (
     <>
-      <h1>Ken Esparta</h1>
+      <Profile/>
     </>
   )
 }
