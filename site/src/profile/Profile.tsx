@@ -14,8 +14,7 @@ function App() {
         <h1 className="text-white text-3xl font-bold mb-10">Software Engineer</h1>
         <p className="text-xl text-white mb-4"> Hello! I'm Ken 👋 </p>
         <p className="text-xl text-white mb-4">
-          I build secure, scalable APIs that convert your business requirements
-          into value-driven solutions.
+          I build secure, scalable APIs that convert business requirements into value-driven solutions.
         </p>
         <SocialLinks/>
       </div>
