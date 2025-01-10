@@ -8,10 +8,10 @@ function App() {
         <img
           alt="Ken Esparta"
           src={logoSvg}
-          className="mx-auto mb-10 w-72 h-72"
+          className="mx-auto mb-10 w-56 h-56"
         />
         <h1 className="text-white text-3xl font-bold mb-10">Software Engineer</h1>
-        <p className="text-xl text-white mb-4"> Hi! I'm Ken 👋 </p>
+        <p className="text-xl text-white mb-4"> Hello! I'm Ken 👋 </p>
         <p className="text-xl text-white">
           I build secure, scalable APIs that convert your business requirements
           into value-driven solutions. Ready to learn more? Head to my blog. 🚀
