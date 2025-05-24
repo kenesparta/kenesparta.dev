@@ -28,6 +28,8 @@
 
     .content__section {
         display: grid;
+        min-height: 100%;
+        min-width: 100%;
         place-items: center;
         align-content: center;
     }
@@ -36,15 +38,15 @@
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         column-gap: 1rem;
-        margin-top: 1rem;
+        margin-top: 1.8rem;
     }
 
     .logo-container {
         background-color: var(--color-accent);
         padding: 1rem;
         border-radius: 10%;
-        width: 70px;
-        height: 70px;
+        width: 80px;
+        height: 80px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -61,21 +63,21 @@
 
     .title {
         margin-top: .8rem;
-        font-size: 2.4rem;
+        font-size: 2.6rem;
         font-weight: bolder;
         color: var(--color-primary);
     }
 
     .subtitle {
         margin-top: .5rem;
-        font-size: 1.5rem;
+        font-size: 1.6rem;
         font-weight: bold;
         color: var(--color-accent);
     }
 
     .slogan {
-        margin-top: 1.5rem;
-        font-size: 1.4rem;
+        margin-top: 1.1rem;
+        font-size: 1.5rem;
         font-style: oblique;
         background: linear-gradient(
                 -30deg,
@@ -88,7 +90,6 @@
         -webkit-background-clip: text;
         color: transparent;
         letter-spacing: 0.02em;
-        max-width: 500px;
         text-align: center;
         animation: gradient-shift 3s ease infinite;
     }
