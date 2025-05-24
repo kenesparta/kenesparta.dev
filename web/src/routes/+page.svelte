@@ -14,6 +14,18 @@
         min-height: 100vh;
     }
 
+    /* For tablets */
+    @media (max-width: 1024px) {
+        .grid-container {
+            grid-template-columns: repeat(1, 1fr); /* 2 columns for tablets */
+        }
+
+        .slogan {
+            font-size: 1rem;
+        }
+    }
+
+
     .sidebar {
         background-color: #fff;
         padding: 1rem;
