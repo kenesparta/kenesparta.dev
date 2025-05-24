@@ -1,3 +1,12 @@
+<script lang="ts">
+  import ButtonPrimary from "$lib/component/ButtonPrimary.svelte";
+  import Github from "$lib/component/icons/Github.svelte";
+  import Linkedin from "$lib/component/icons/Linkedin.svelte";
+
+  const githubPage = "https://github.com/kenesparta";
+  const linkedinPage = "https://www.linkedin.com/in/kenesparta/";
+</script>
+
 <style>
     .grid-container {
         display: grid;
@@ -17,10 +26,17 @@
         place-items: center;
     }
 
-    .main__section {
+    .content__section {
         display: grid;
         place-items: center;
         align-content: center;
+    }
+
+    .content__contact {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        column-gap: 1rem;
+        margin-top: 1rem;
     }
 
     .logo-container {
@@ -45,21 +61,21 @@
 
     .title {
         margin-top: .8rem;
-        font-size: 2.3rem;
+        font-size: 2.4rem;
         font-weight: bolder;
         color: var(--color-primary);
     }
 
     .subtitle {
         margin-top: .5rem;
-        font-size: 1.4rem;
+        font-size: 1.5rem;
         font-weight: bold;
         color: var(--color-accent);
     }
 
     .slogan {
         margin-top: 1.5rem;
-        font-size: 1.3rem;
+        font-size: 1.4rem;
         font-style: oblique;
         background: linear-gradient(
                 -30deg,
@@ -91,18 +107,23 @@
 </style>
 
 <div class="grid-container">
-    <div class="sidebar"></div>
+    <aside class="sidebar"></aside>
 
-    <div class="content">
-        <section class="main__section">
+    <section class="content">
+        <section class="content__section">
             <div class="logo-container">
-                <div class="logo" role="img" aria-label="Ken Esparta logo"></div>
+                <div class="logo" role="img"></div>
             </div>
             <h1 class="title">Ken Esparta</h1>
             <h2 class="subtitle">Software Engineer</h2>
             <p class="slogan">Developing software that scales with your ambition.</p>
+            <div class="content__contact">
+                <ButtonPrimary href="">About</ButtonPrimary>
+                <ButtonPrimary href="{githubPage}" external="{true}"> <Github size={20} /></ButtonPrimary>
+                <ButtonPrimary href="{linkedinPage}"  external="{true}"> <Linkedin size={20} /></ButtonPrimary>
+            </div>
         </section>
-    </div>
+    </section>
 
-    <div class="sidebar"></div>
+    <aside class="sidebar"></aside>
 </div>
