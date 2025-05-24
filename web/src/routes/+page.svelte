@@ -66,6 +66,7 @@
         font-size: 2.6rem;
         font-weight: bolder;
         color: var(--color-primary);
+        text-align: center;
     }
 
     .subtitle {
@@ -73,6 +74,7 @@
         font-size: 1.6rem;
         font-weight: bold;
         color: var(--color-accent);
+        text-align: center;
     }
 
     .slogan {
@@ -89,7 +91,6 @@
         background-clip: text;
         -webkit-background-clip: text;
         color: transparent;
-        letter-spacing: 0.02em;
         text-align: center;
         animation: gradient-shift 3s ease infinite;
     }
