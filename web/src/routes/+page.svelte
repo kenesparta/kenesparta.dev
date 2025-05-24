@@ -25,7 +25,6 @@
         }
     }
 
-
     .sidebar {
         background-color: #fff;
         padding: 1rem;
@@ -133,8 +132,12 @@
             <p class="slogan">Developing software that scales with your ambition.</p>
             <div class="content__contact">
                 <ButtonPrimary href="">About</ButtonPrimary>
-                <ButtonPrimary href="{githubPage}" external="{true}"> <Github size={20} /></ButtonPrimary>
-                <ButtonPrimary href="{linkedinPage}"  external="{true}"> <Linkedin size={20} /></ButtonPrimary>
+                <ButtonPrimary href="{githubPage}" external="{true}">
+                    <Github size={20}/>
+                </ButtonPrimary>
+                <ButtonPrimary href="{linkedinPage}" external="{true}">
+                    <Linkedin size={20}/>
+                </ButtonPrimary>
             </div>
         </section>
     </section>
