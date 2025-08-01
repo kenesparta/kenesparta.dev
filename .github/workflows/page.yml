@@ -2,7 +2,8 @@ name: Build & deploy to Github pages
 
 on:
   push:
-    branches: ['main']
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
 
 permissions:
   contents: write
