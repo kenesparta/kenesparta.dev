@@ -1,22 +1,23 @@
 * {
-    margin: 0;
-    padding: 0;
-    font-family: 'Petrona', serif;
+	margin: 0;
+	padding: 0;
+	font-family: 'Petrona', serif;
 }
-html, body {
-    height: 100%;
-    width: 100%;
+html,
+body {
+	height: 100%;
+	width: 100%;
 }
 
 body {
-    -webkit-font-smoothing: antialiased;
-    letter-spacing: 0.01em;
+	-webkit-font-smoothing: antialiased;
+	letter-spacing: 0.01em;
 }
 
 :root {
-    --color-primary: #0092FA;
-    --color-secondary: #4869CC;
-    --color-text: #41444D;
-    --color-accent: #1B1C21;
-    --color-accent-sec: #5A6CA3;
+	--color-primary: #0092fa;
+	--color-secondary: #4869cc;
+	--color-text: #41444d;
+	--color-accent: #1b1c21;
+	--color-accent-sec: #5a6ca3;
 }
