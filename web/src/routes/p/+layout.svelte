@@ -13,7 +13,8 @@
 	main {
 		min-height: calc(100vh - 60px);
 		padding: 2rem;
-		max-width: 1200px;
+		max-width: 1000px;
 		margin: 0 auto;
+		font-size: 1.2rem;
 	}
 </style>

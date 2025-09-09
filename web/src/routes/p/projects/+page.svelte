@@ -3,8 +3,7 @@
 	<meta name="description" content="My projects and work" />
 </svelte:head>
 
-<div class="page-container">
-	<h1>Projects</h1>
+<div>
 	<p>Here are some of the projects I've worked on:</p>
 
 	<div class="projects-grid">
@@ -46,10 +45,6 @@
 </div>
 
 <style>
-	.page-container {
-		max-width: 1000px;
-		margin: 0 auto;
-	}
 
 	h1 {
 		color: #333;

@@ -6,8 +6,7 @@
 	<meta name="description" content="My blog posts and articles" />
 </svelte:head>
 
-<div class="page-container">
-	<h1>Blog</h1>
+<div>
 	<p>Welcome to my blog! Here you'll find my latest posts and articles.</p>
 
 	<!-- You can add blog post list here -->
@@ -22,16 +21,6 @@
 </div>
 
 <style>
-	.page-container {
-		max-width: 1000px;
-		margin: 0 auto;
-	}
-
-	h1 {
-		color: #333;
-		margin-bottom: 1rem;
-	}
-
 	.blog-posts {
 		margin-top: 2rem;
 	}

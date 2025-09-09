@@ -17,9 +17,9 @@
 			</div>
 			<h1 class="title">Ken Esparta</h1>
 			<h2 class="subtitle">Software Engineer</h2>
-			<p class="slogan">Developing software that scales with your ambition.</p>
+			<p class="slogan">We are developing incredible software that scales with your ambition...</p>
 			<div class="content__contact">
-				<ButtonPrimary href="">Learn more</ButtonPrimary>
+				<ButtonPrimary href="/p/about">Learn more</ButtonPrimary>
 				<ButtonPrimary href={githubPage} external={true}>
 					<Github size={20} />
 				</ButtonPrimary>
@@ -108,6 +108,7 @@
 
 	.subtitle {
 		margin-top: 0.5rem;
+        margin-bottom: 0.7rem;
 		font-size: 1.6rem;
 		font-weight: bold;
 		color: var(--color-accent);
@@ -115,7 +116,7 @@
 	}
 
 	.slogan {
-		margin-top: 1.1rem;
+		margin-top: 0.4rem;
 		font-size: 1.5rem;
 		font-style: oblique;
 		background: linear-gradient(
