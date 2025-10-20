@@ -1,2 +1,2 @@
 # Ken Esparta
-Main website
+This website was built using Leptos

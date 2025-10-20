@@ -1,0 +1,17 @@
+[package]
+authors = ["Ken Esparta"]
+edition = "2024"
+name = "kenesparta-dev"
+version = "0.1.0"
+readme = "README.md"
+
+[dependencies]
+leptos = { version = "0.8.9", features = ["csr"] }
+leptos_router = "0.8.7"
+leptos_axum = { version = "0.8.6", optional = true }
+axum = { version = "0.8.6", optional = true }
+tokio = { version = "1.47.1", optional = true }
+
+[features]
+default = []
+ssr = ["leptos/ssr", "dep:leptos_axum", "dep:axum"]
