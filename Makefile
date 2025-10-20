@@ -1,1 +1,2 @@
-\
+build:
+	trunk build
