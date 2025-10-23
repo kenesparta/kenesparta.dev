@@ -2,8 +2,5 @@
 minify = "always"
 filehash = true
 
-[clean]
-dist = "dist"
-
 [serve]
 port = 8080
