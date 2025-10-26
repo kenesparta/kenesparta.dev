@@ -1,4 +1,4 @@
-use crate::SocialLinks;
+use crate::{HeaderLinks, SocialLinks};
 use leptos::prelude::*;
 use crate::constants::BUCKET_URL;
 
@@ -22,6 +22,7 @@ Engineer with 8+ years of experience, specializing in Go and Rust microservices.
             <h1 class="delius-swash-caps home__title">"Ken Esparta"</h1>
             <h2 class="mooli home__subtitle">"Senior Software Engineer"</h2>
             <SocialLinks/>
+            <HeaderLinks/>
             <p class="home__description">
                 {description.to_string()}
             </p>

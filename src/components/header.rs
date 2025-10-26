@@ -5,9 +5,9 @@ pub fn Header() -> impl IntoView {
     view! {
         <header class="header">
             <nav class="nav">
-                <div class="nav-brand">
+                <div>
                     <a href="/" class="brand-link">
-                        <img src="/img/icon.svg" alt="Logo" class="brand-icon" style="width: 40px; height: 40px;"/>
+                        <img src="/img/icon.svg" alt="Logo" class="brand-icon"/>
                         "Ken Esparta"
                     </a>
                 </div>
