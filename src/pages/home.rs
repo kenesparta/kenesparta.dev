@@ -1,6 +1,6 @@
+use crate::constants::BUCKET_URL;
 use crate::{HeaderLinks, SocialLinks};
 use leptos::prelude::*;
-use crate::constants::BUCKET_URL;
 
 pub struct Experience {
     pub situation: String,

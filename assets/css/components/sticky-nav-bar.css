@@ -1,0 +1,47 @@
+.sticky-nav-bar {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .2rem .2rem;
+    margin-bottom: 1rem;
+    background: #fff;
+    border-bottom: 1px solid var(--primary-color);
+}
+
+.sticky-nav-bar__brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.sticky-nav-bar__brand:hover {
+    transform: scale(1.03);
+    opacity: 0.8;
+}
+
+.sticky-nav-bar__img {
+    height: 2.5rem;
+    width: 2.5rem;
+    border-radius: 30%;
+}
+
+.sticky-nav-bar__name {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+}
+
+.sticky-nav-bar__name-first {
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.sticky-nav-bar__name-last {
+    font-weight: normal;
+    color: var(--secondary-color);
+}

@@ -1,13 +1,17 @@
 [package]
 authors = ["Ken Esparta"]
-edition = "2024"
+edition = "2021"
 name = "kenesparta-dev"
 version = "0.1.0"
 readme = "README.md"
 
 [dependencies]
 leptos = { version = "0.8.9", features = ["csr"] }
-leptos_router = "0.8.7"
 leptos_axum = { version = "0.8.6", optional = true }
-axum = { version = "0.8.6", optional = true }
-tokio = { version = "1.47.1", optional = true }
+leptos_router = "0.8.7"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+web-sys = "0.3.81"
+wasm-bindgen-futures = "0.4.54"
+pulldown-cmark = "0.13.0"
+wasm-bindgen = "0.2.104"
