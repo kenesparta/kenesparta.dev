@@ -1,6 +1,0 @@
-[build]
-minify = "always"
-filehash = true
-
-[serve]
-port = 8080
