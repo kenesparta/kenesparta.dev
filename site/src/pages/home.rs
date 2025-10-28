@@ -1,13 +1,6 @@
+use crate::components::{HeaderLinks, SocialLinks};
 use crate::constants::BUCKET_URL;
-use crate::{HeaderLinks, SocialLinks};
 use leptos::prelude::*;
-
-pub struct Experience {
-    pub situation: String,
-    pub task: String,
-    pub action: String,
-    pub result: String,
-}
 
 #[component]
 pub fn HomePage() -> impl IntoView {

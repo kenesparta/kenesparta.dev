@@ -37,11 +37,9 @@
 }
 
 .sticky-nav-bar__name-first {
-    font-weight: bold;
     color: var(--primary-color);
 }
 
 .sticky-nav-bar__name-last {
-    font-weight: normal;
     color: var(--secondary-color);
 }

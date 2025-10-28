@@ -45,6 +45,29 @@ resource "aws_cloudfront_origin_access_control" "cdn_oac" {
   signing_protocol                  = "sigv4"
 }
 
+resource "aws_cloudfront_response_headers_policy" "cors_policy" {
+  name    = "cdn-cors-policy"
+  comment = "CORS policy for CDN"
+
+  cors_config {
+    access_control_allow_credentials = false
+
+    access_control_allow_headers {
+      items = ["*"]
+    }
+
+    access_control_allow_methods {
+      items = ["GET", "HEAD", "OPTIONS"]
+    }
+
+    access_control_allow_origins {
+      items = ["https://${var.primary_dns}", "*"]
+    }
+
+    origin_override = true
+  }
+}
+
 resource "aws_cloudfront_distribution" "cdn_distribution" {
   enabled             = true
   is_ipv6_enabled     = true
@@ -71,6 +94,8 @@ resource "aws_cloudfront_distribution" "cdn_distribution" {
         forward = "none"
       }
     }
+
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.cors_policy.id
 
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0

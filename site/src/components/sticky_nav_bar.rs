@@ -1,7 +1,7 @@
-use leptos::prelude::*;
-use leptos::{IntoView, component, view};
+use crate::components::HeaderLinks;
 use crate::constants::BUCKET_URL;
-use crate::HeaderLinks;
+use leptos::prelude::*;
+use leptos::{component, view, IntoView};
 
 #[component]
 pub fn StickyNavBar() -> impl IntoView {

@@ -1,6 +1,6 @@
 use crate::constants::BUCKET_URL;
 use leptos::prelude::*;
-use leptos::{IntoView, component, view};
+use leptos::{component, view, IntoView};
 
 #[component]
 pub fn SocialLinks() -> impl IntoView {

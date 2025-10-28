@@ -1,0 +1,37 @@
+@font-face {
+    font-family: 'Solway';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('https://cdn.kenesparta.dev/fonts/solway-v19-latin-regular.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Solway';
+    font-weight: 700;
+    font-display: swap;
+    src: url('https://cdn.kenesparta.dev/fonts/solway-v19-latin-700.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Solway';
+    font-weight: 800;
+    font-display: swap;
+    src: url('https://cdn.kenesparta.dev/fonts/solway-v19-latin-800.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Delius Swash Caps';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('https://cdn.kenesparta.dev/fonts/delius-swash-caps-v25-latin-regular.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Mooli';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('https://cdn.kenesparta.dev/fonts/mooli-v1-latin-regular.woff2') format('woff2');
+}

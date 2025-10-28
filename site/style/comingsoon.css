@@ -1,0 +1,41 @@
+.coming-soon-page {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 2rem;
+}
+
+.coming-soon-container {
+    max-width: 600px;
+    width: 100%;
+}
+
+.coming-soon-content {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.coming-soon-icon {
+    color: var(--primary-color);
+}
+
+.coming-soon-title {
+    color: var(--primary-color);
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+@media (max-width: 768px) {
+    .coming-soon-title {
+        font-size: 1rem;
+    }
+
+    .coming-soon-icon svg {
+        width: 60px;
+        height: 60px;
+    }
+}

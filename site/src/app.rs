@@ -1,11 +1,76 @@
+use crate::components::StickyNavBar;
+use crate::constants::{BUCKET_URL, ICON_URL, META_DESCRIPTION};
+use crate::pages::{About, Blog, Experience, HomePage, Projects};
 use leptos::prelude::*;
-use leptos_meta::{provide_meta_context, MetaTags, Stylesheet, Title};
+use leptos_meta::{provide_meta_context, Link, Meta, MetaTags, Stylesheet, Title};
+use leptos_router::hooks::use_location;
 use leptos_router::{
     components::{Route, Router, Routes},
     StaticSegment,
 };
 
+#[component]
+pub fn App() -> impl IntoView {
+    provide_meta_context();
+
+    view! {
+        <Stylesheet id="leptos" href="/pkg/kenespartadev.css"/>
+
+        <Title text="Ken Esparta<"/>
+
+        <Link rel="icon" type_="image/x-icon" href={ICON_URL}/>
+        <Link rel="preconnect" href={BUCKET_URL} crossorigin="anonymous"/>
+
+        <Meta charset="UTF-8"/>
+        <Meta name="viewport" content="width=device-width, initial-scale=1"/>
+        <Meta name="description" content={META_DESCRIPTION}/>
+        <Meta name="googlebot" content="index,follow,snippet,archive"/>
+
+        <OgProperties/>
+
+        <Router>
+            <div class="app">
+                <main>
+                    <ConditionalNavBar/>
+                    <Routes fallback=|| "Page not found.".into_view()>
+                        <Route path=StaticSegment("") view=HomePage/>
+                        <Route path=StaticSegment("/about") view=About/>
+                        <Route path=StaticSegment("/blog") view=Blog/>
+                        <Route path=StaticSegment("/experience") view=Experience/>
+                        <Route path=StaticSegment("/projects") view=Projects/>
+                    </Routes>
+                </main>
+            </div>
+        </Router>
+    }
+}
+
+#[component]
+fn ConditionalNavBar() -> impl IntoView {
+    let location = use_location();
+    let is_home = move || location.pathname.get() == "/";
+
+    view! {
+        <Show when=move || !is_home()>
+            <StickyNavBar/>
+        </Show>
+    }
+}
+
+#[component]
+fn OgProperties() -> impl IntoView {
+    view! {
+        <Meta property="og:url" content="https://kenesparta.dev/"/>
+        <Meta property="og:type" content="website"/>
+        <Meta property="og:title" content="Ken Esparta - Software Engineer"/>
+        <Meta property="og:description" content={META_DESCRIPTION}/>
+        <Meta property="og:image" content={ICON_URL}/>
+    }
+}
+
 pub fn shell(options: LeptosOptions) -> impl IntoView {
+    provide_meta_context();
+
     view! {
         <!DOCTYPE html>
         <html lang="en">
@@ -20,42 +85,5 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <App/>
             </body>
         </html>
-    }
-}
-
-#[component]
-pub fn App() -> impl IntoView {
-    // Provides context that manages stylesheets, titles, meta tags, etc.
-    provide_meta_context();
-
-    view! {
-        // injects a stylesheet into the document <head>
-        // id=leptos means cargo-leptos will hot-reload this stylesheet
-        <Stylesheet id="leptos" href="/pkg/kenespartadev.css"/>
-
-        // sets the document title
-        <Title text="Welcome to Leptos"/>
-
-        // content for this welcome page
-        <Router>
-            <main>
-                <Routes fallback=|| "Page not found.".into_view()>
-                    <Route path=StaticSegment("") view=HomePage/>
-                </Routes>
-            </main>
-        </Router>
-    }
-}
-
-/// Renders the home page of your application.
-#[component]
-fn HomePage() -> impl IntoView {
-    // Creates a reactive value to update the button
-    let count = RwSignal::new(0);
-    let on_click = move |_| *count.write() += 1;
-
-    view! {
-        <h1>"Welcome to Leptos!"</h1>
-        <button on:click=on_click>"Click Me: " {count}</button>
     }
 }

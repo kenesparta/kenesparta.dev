@@ -30,25 +30,26 @@
     background: var(--primary-color);
 }
 
-.nav-links__element:hover::before {
-}
-
-.nav-links__element:active {
-    color: var(--primary-color);
-}
-
 .nav-links__element:visited {
     color: var(--primary-color);
 }
 
 .nav-links__element {
-    font-weight: 300;
-    font-size: 1rem;
+    font-weight: 400;
+    font-size: 1.1rem;
     color: var(--primary-color);
 }
 
-.nav-links__element:hover {
+.nav-links__element:hover,
+.nav-links__element:focus,
+.nav-links__element:active {
+    outline-offset: 2px;
     background: var(--accent-color);
+}
+
+.nav-links__element--active {
+    background: var(--accent-color);
+    outline-offset: 2px;
 }
 
 @media (max-width: 768px) {

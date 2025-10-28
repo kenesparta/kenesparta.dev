@@ -13,9 +13,9 @@ pub fn Header() -> impl IntoView {
                 </div>
 
                 <ul class="nav-links">
-                    <li><a href="/" class="nav-link">"Home"</a></li>
-                    <li><a href="/about" class="nav-link">"About"</a></li>
-                    <li><a href="/contact" class="nav-link">"Contact"</a></li>
+                    <li><a href="/" class="">"Home"</a></li>
+                    <li><a href="/about" class="">"About"</a></li>
+                    <li><a href="/contact" class="">"Contact"</a></li>
                 </ul>
             </nav>
         </header>
