@@ -145,8 +145,8 @@ resource "aws_lb" "kenesparta" {
     aws_subnet.public_3.id
   ]
 
-  enable_deletion_protection = false
-  enable_http2               = true
+  enable_deletion_protection       = false
+  enable_http2                     = true
   enable_cross_zone_load_balancing = true
 
   tags = merge(
