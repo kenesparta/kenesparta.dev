@@ -16,7 +16,7 @@ pub fn App() -> impl IntoView {
     view! {
         <Stylesheet id="leptos" href="/pkg/kenespartadev.css"/>
 
-        <Title text="Ken Esparta<"/>
+        <Title text="Ken Esparta"/>
 
         <Link rel="icon" type_="image/x-icon" href={ICON_URL}/>
         <Link rel="preconnect" href={BUCKET_URL} crossorigin="anonymous"/>

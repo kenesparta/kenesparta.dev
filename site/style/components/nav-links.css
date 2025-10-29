@@ -27,17 +27,17 @@
     bottom: 0;
     left: 50%;
     width: 80%;
-    background: var(--primary-color);
+    background: var(--secondary-color);
 }
 
 .nav-links__element:visited {
-    color: var(--primary-color);
+    color: var(--secondary-color);
 }
 
 .nav-links__element {
     font-weight: 400;
     font-size: 1.1rem;
-    color: var(--primary-color);
+    color: var(--secondary-color);
 }
 
 .nav-links__element:hover,

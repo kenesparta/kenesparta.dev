@@ -2,6 +2,7 @@ use axum::Router;
 use kenespartadev::app::*;
 use leptos::prelude::*;
 use leptos_axum::{generate_route_list, LeptosRoutes};
+use tower_http::compression::CompressionLayer;
 
 #[cfg(feature = "ssr")]
 #[tokio::main]
@@ -18,6 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             move || shell(leptos_options.clone())
         })
         .fallback(leptos_axum::file_and_error_handler(shell))
+        .layer(CompressionLayer::new())
         .with_state(leptos_options);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
