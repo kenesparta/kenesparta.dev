@@ -1,19 +1,135 @@
-resource "aws_iam_user" "github_actions_cdn" {
-  name = "github-actions-cdn-writer"
-  path = "/service-accounts/"
+resource "aws_iam_openid_connect_provider" "github" {
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
+  thumbprint_list = [
+    "6938fd4d98bab03faadb97b34396831e3780aea1",
+    "1b511abead59c6ce207077c0bf0e0043b1382612"
+  ]
 
   tags = merge(
     local.common_tags,
     {
-      Name        = "github-actions-cdn-writer"
-      Description = "Service account for GitHub Actions to write to CDN bucket"
+      Name = "github-actions-oidc-provider"
     }
   )
 }
 
-resource "aws_iam_user_policy" "github_actions_cdn_write" {
+resource "aws_iam_role" "github_actions_deploy" {
+  name = "github-actions-ecr-ecs-deploy"
+  path = "/github-actions/"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowGitHubActionsOIDC"
+        Effect = "Allow"
+        Principal = {
+          Federated = aws_iam_openid_connect_provider.github.arn
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          }
+          StringLike = {
+            "token.actions.githubusercontent.com:sub" = [
+              "repo:kenesparta/kenesparta.dev:ref:refs/heads/main",
+              "repo:kenesparta/kenesparta.dev:ref:refs/tags/*",
+              "repo:kenesparta/typst-resume:ref:refs/heads/main",
+              "repo:kenesparta/typst-resume:ref:refs/tags/*",
+            ]
+          }
+        }
+      }
+    ]
+  })
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name        = "github-actions-ecr-ecs-deploy"
+      Description = "Role for GitHub Actions to deploy to ECR and ECS"
+    }
+  )
+}
+
+resource "aws_iam_role_policy" "github_actions_ecr" {
+  name = "ecr-push-policy"
+  role = aws_iam_role.github_actions_deploy.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowECRAuth"
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowECRImageManagement"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:PutImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload"
+        ]
+        Resource = "arn:aws:ecr:${var.region}:*:repository/*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "github_actions_ecs" {
+  name = "ecs-deploy-policy"
+  role = aws_iam_role.github_actions_deploy.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowECSTaskDefinition"
+        Effect = "Allow"
+        Action = [
+          "ecs:DescribeTaskDefinition",
+          "ecs:RegisterTaskDefinition"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowECSServiceUpdate"
+        Effect = "Allow"
+        Action = [
+          "ecs:UpdateService",
+          "ecs:DescribeServices"
+        ]
+        Resource = "arn:aws:ecs:${var.region}:*:service/*/*"
+      },
+      {
+        Sid      = "AllowPassRole"
+        Effect   = "Allow"
+        Action   = "iam:PassRole"
+        Resource = "arn:aws:iam::*:role/*"
+        Condition = {
+          StringEquals = {
+            "iam:PassedToService" = "ecs-tasks.amazonaws.com"
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "github_actions_s3" {
   name = "cdn-bucket-write-policy"
-  user = aws_iam_user.github_actions_cdn.name
+  role = aws_iam_role.github_actions_deploy.id
 
   policy = jsonencode({
     Version = "2012-10-17"
