@@ -5,7 +5,7 @@ RUN cargo install cargo-leptos
 
 WORKDIR /app
 
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml ./
 COPY src ./src
 COPY style ./style
 COPY public ./public
