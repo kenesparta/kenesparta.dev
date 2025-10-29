@@ -1,6 +1,7 @@
 resource "aws_acm_certificate" "kenesparta_cert" {
-  domain_name       = "*.kenesparta.dev"
-  validation_method = "DNS"
+  domain_name               = var.primary_dns
+  subject_alternative_names = ["*.${var.primary_dns}"]
+  validation_method         = "DNS"
 
   lifecycle {
     create_before_destroy = true

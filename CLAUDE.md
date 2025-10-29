@@ -33,8 +33,13 @@ This is a personal portfolio website built with Leptos (Rust full-stack web fram
 │   ├── Cargo.toml        # Rust dependencies and Leptos config
 │   └── Dockerfile        # Multi-stage Docker build
 ├── tf/                   # Terraform infrastructure
-│   ├── dns/              # Route53 DNS configuration
-│   └── backend/          # Backend infrastructure (S3, CloudFront, etc.)
+│   ├── dns/              # DNS, ECS/ECR, CDN infrastructure
+│   │   ├── vpc.tf        # VPC, subnets, internet gateway, route tables
+│   │   ├── ecs.tf        # ECS cluster, ECR repo, security groups
+│   │   ├── iam-*.tf      # IAM roles for GitHub Actions and ECS
+│   │   ├── cdn.tf        # CloudFront and S3 for static CDN
+│   │   └── dns-*.tf      # Route53 zones and records
+│   └── backend/          # Terraform backend infrastructure
 ├── .github/workflows/    # CI/CD pipelines
 └── Makefile              # Build shortcuts
 ```
@@ -150,6 +155,73 @@ Environment variables for production:
 - `LEPTOS_SITE_ROOT=./kdevsite`
 - `RUST_LOG="info"`
 
+### AWS Infrastructure (ECS/ECR)
+
+The application is deployed on AWS using ECS Fargate with CloudFront CDN (no ALB to save costs):
+
+**VPC (Virtual Private Cloud):**
+- Custom VPC with CIDR 10.0.0.0/16
+- 3 public subnets across 3 availability zones (10.0.1.0/24, 10.0.2.0/24, 10.0.3.0/24)
+- Internet Gateway for public internet access
+- Route tables configured for internet routing
+- VPC Flow Logs enabled (7-day retention for debugging)
+- No NAT Gateway (saves ~$32/month, not needed for public ECS tasks)
+
+**ECR (Elastic Container Registry):**
+- Repository: `kenesparta-dev`
+- Lifecycle policy: Keeps only last 10 images
+- Image scanning enabled on push
+
+**ECS (Elastic Container Service):**
+- Cluster: `kenesparta-cluster`
+- Service: `kenesparta-service`
+- Task Definition: `kenesparta-dev`
+- Container: `kenesparta-app`
+- Launch Type: Fargate (serverless)
+- Resources: 256 CPU units, 512 MB memory
+- Networking: awsvpc mode with public IP assignment
+- Single task (cost-optimized for personal site)
+
+**Service Discovery (AWS Cloud Map):**
+- Public DNS namespace: `ecs.kenesparta.dev`
+- Service DNS: `app.ecs.kenesparta.dev`
+- Automatically updates DNS when ECS task IP changes
+- TTL: 10 seconds for fast failover
+- Routing: MULTIVALUE for multiple task IPs
+
+**CloudFront CDN:**
+- Distribution with custom domain `kenesparta.dev`
+- Origin: Service Discovery DNS (`app.ecs.kenesparta.dev:3000`)
+- HTTPS termination with ACM certificate for `*.kenesparta.dev`
+- Automatic HTTP to HTTPS redirect
+- Caching with custom policies for dynamic content
+- Compression enabled (Brotli + Gzip)
+- Price class: North America & Europe only (PriceClass_100)
+
+**Security:**
+- ECS Tasks Security Group: Allows inbound 3000 from internet (CloudFront has no fixed IPs)
+- IAM roles using OIDC federation for GitHub Actions (no long-lived credentials)
+- Task execution role for pulling images and writing logs
+- Task role for runtime permissions
+
+**DNS:**
+- `kenesparta.dev` A record points to CloudFront using Route53 alias
+- `app.ecs.kenesparta.dev` managed by Service Discovery (points to ECS task IPs)
+- SSL/TLS certificate via ACM with automatic DNS validation
+
+**Logging:**
+- CloudWatch log group: `/ecs/kenesparta-dev`
+- Log retention: 7 days
+- Container Insights enabled for monitoring
+
+**Cost Optimization:**
+- No Application Load Balancer (~$16-20/month saved)
+- No NAT Gateway (~$32/month saved, using public subnets only)
+- Single Fargate task with minimal resources (256 CPU / 512 MB)
+- CloudFront is pay-per-use (minimal cost for low traffic)
+- Service Discovery is low cost (~$1/month per namespace)
+- VPC Flow Logs for debugging only (can be disabled in production)
+
 ### CI/CD Pipeline
 
 GitHub Actions workflow (`.github/workflows/page.yml`):
@@ -157,9 +229,15 @@ GitHub Actions workflow (`.github/workflows/page.yml`):
 - Builds Docker image and pushes to AWS ECR
 - Updates ECS task definition and deploys to ECS cluster
 
-**Note:** Workflow environment variables need to be configured in GitHub Secrets:
-- `AWS_ROLE_ARN`: IAM role for OIDC authentication
-- ECR/ECS resource names in workflow env vars
+**GitHub Secrets Required:**
+- `AWS_ROLE_ARN`: IAM role ARN from `tf/dns/iam-resume-s3.tf` output
+
+**Workflow Configuration:**
+- ECR Repository: `kenesparta-dev`
+- ECS Cluster: `kenesparta-cluster`
+- ECS Service: `kenesparta-service`
+- ECS Task Definition: `kenesparta-dev`
+- Container Name: `kenesparta-app`
 
 ## Cargo.toml Configuration
 
