@@ -37,7 +37,7 @@ This is a personal portfolio website built with Leptos (Rust full-stack web fram
 │   │   ├── vpc.tf        # VPC, subnets, internet gateway, route tables
 │   │   ├── ecs.tf        # ECS cluster, ECR repo, security groups
 │   │   ├── iam-*.tf      # IAM roles for GitHub Actions and ECS
-│   │   ├── cdn.tf        # CloudFront and S3 for static CDN
+│   │   ├── cdn.tf        # CloudFront and S3 for static CDN (cdn.kenesparta.dev)
 │   │   └── dns-*.tf      # Route53 zones and records
 │   └── backend/          # Terraform backend infrastructure
 ├── .github/workflows/    # CI/CD pipelines
@@ -157,7 +157,7 @@ Environment variables for production:
 
 ### AWS Infrastructure (ECS/ECR)
 
-The application is deployed on AWS using ECS Fargate with CloudFront CDN (no ALB to save costs):
+The application is deployed on AWS using ECS Fargate with Application Load Balancer:
 
 **VPC (Virtual Private Cloud):**
 - Custom VPC with CIDR 10.0.0.0/16
@@ -169,7 +169,7 @@ The application is deployed on AWS using ECS Fargate with CloudFront CDN (no ALB
 
 **ECR (Elastic Container Registry):**
 - Repository: `kenesparta-dev`
-- Lifecycle policy: Keeps only last 10 images
+- Lifecycle policy: Keeps only the latest image
 - Image scanning enabled on push
 
 **ECS (Elastic Container Service):**
@@ -179,34 +179,25 @@ The application is deployed on AWS using ECS Fargate with CloudFront CDN (no ALB
 - Container: `kenesparta-app`
 - Launch Type: Fargate (serverless)
 - Resources: 256 CPU units, 512 MB memory
-- Networking: awsvpc mode with public IP assignment
+- Networking: awsvpc mode with target group registration
 - Single task (cost-optimized for personal site)
 
-**Service Discovery (AWS Cloud Map):**
-- Public DNS namespace: `ecs.kenesparta.dev`
-- Service DNS: `app.ecs.kenesparta.dev`
-- Automatically updates DNS when ECS task IP changes
-- TTL: 10 seconds for fast failover
-- Routing: MULTIVALUE for multiple task IPs
-
-**CloudFront CDN:**
-- Distribution with custom domain `kenesparta.dev`
-- Origin: Service Discovery DNS (`app.ecs.kenesparta.dev:3000`)
+**Application Load Balancer:**
+- Public-facing ALB for HTTP/HTTPS traffic
+- Target Group: IP-based targeting for Fargate tasks
+- Listeners: HTTP (redirects to HTTPS), HTTPS with TLS 1.3
+- Health Checks: HTTP on port 3000, path `/`
 - HTTPS termination with ACM certificate for `*.kenesparta.dev`
-- Automatic HTTP to HTTPS redirect
-- Caching with custom policies for dynamic content
-- Compression enabled (Brotli + Gzip)
-- Price class: North America & Europe only (PriceClass_100)
 
 **Security:**
-- ECS Tasks Security Group: Allows inbound 3000 from internet (CloudFront has no fixed IPs)
+- ALB Security Group: Allows inbound 80/443 from internet
+- ECS Tasks Security Group: Allows inbound 3000 from ALB only
 - IAM roles using OIDC federation for GitHub Actions (no long-lived credentials)
 - Task execution role for pulling images and writing logs
 - Task role for runtime permissions
 
 **DNS:**
-- `kenesparta.dev` A record points to CloudFront using Route53 alias
-- `app.ecs.kenesparta.dev` managed by Service Discovery (points to ECS task IPs)
+- `kenesparta.dev` A record points to ALB using Route53 alias
 - SSL/TLS certificate via ACM with automatic DNS validation
 
 **Logging:**
@@ -215,11 +206,9 @@ The application is deployed on AWS using ECS Fargate with CloudFront CDN (no ALB
 - Container Insights enabled for monitoring
 
 **Cost Optimization:**
-- No Application Load Balancer (~$16-20/month saved)
 - No NAT Gateway (~$32/month saved, using public subnets only)
 - Single Fargate task with minimal resources (256 CPU / 512 MB)
-- CloudFront is pay-per-use (minimal cost for low traffic)
-- Service Discovery is low cost (~$1/month per namespace)
+- ALB only (~$16-20/month, simpler than CloudFront + ALB setup)
 - VPC Flow Logs for debugging only (can be disabled in production)
 
 ### CI/CD Pipeline
