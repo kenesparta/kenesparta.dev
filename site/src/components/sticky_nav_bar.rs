@@ -1,6 +1,7 @@
 use crate::constants::BUCKET_URL;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
+use crate::components::HeaderLinks;
 
 #[component]
 pub fn StickyNavBar() -> impl IntoView {
@@ -14,7 +15,7 @@ pub fn StickyNavBar() -> impl IntoView {
                     <span class="delius-swash-caps sticky-nav-bar__name-last">"Esparta"</span>
                 </div>
             </a>
-            // <HeaderLinks/>
+            <HeaderLinks/>
         </nav>
     }
 }
