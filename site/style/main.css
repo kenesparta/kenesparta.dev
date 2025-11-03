@@ -3,7 +3,7 @@
     --primary-color: #0092FA;
     --secondary-color: #000080;
     --accent-color: #CAE9FF;
-    --background-color: #F1F9FF;
+    --background-color: #F1FAFF;
     --text-color: #494E53;
 }
 
@@ -26,6 +26,7 @@
 
 body {
     min-height: 100vh;
+    background-color: var(--background-color);
 }
 
 .app {

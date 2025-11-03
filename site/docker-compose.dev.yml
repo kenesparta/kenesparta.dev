@@ -15,9 +15,11 @@ services:
       - ./Cargo.lock:/app/Cargo.lock
       - cargo-cache:/usr/local/cargo/registry
       - target-cache:/app/target
+      - ~/.aws:/root/.aws:ro
     environment:
       - RUST_LOG=debug
-      - LEPTOS_SASS_VERSION=1.93.2
+      - LEPTOS_SASS_VERSION=1.93.3
+      - AWS_PROFILE=AdministratorAccess-711387133796
     networks:
       - dev-network
 

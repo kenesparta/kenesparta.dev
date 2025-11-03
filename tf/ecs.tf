@@ -67,6 +67,35 @@ resource "aws_iam_role" "ecs_task" {
   )
 }
 
+resource "aws_iam_role_policy" "ecs_task_dynamodb" {
+  name = "ecs-task-dynamodb-policy"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowDynamoDBAccess"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query",
+          "dynamodb:Scan",
+          "dynamodb:BatchGetItem",
+          "dynamodb:BatchWriteItem"
+        ]
+        Resource = [
+          "arn:aws:dynamodb:${var.region}:*:table/kenesparta-blog-posts",
+          "arn:aws:dynamodb:${var.region}:*:table/kenesparta-blog-posts/index/*"
+        ]
+      }
+    ]
+  })
+}
+
 resource "aws_security_group" "alb" {
   name        = "kenesparta-alb-sg"
   description = "Security group for Application Load Balancer"
@@ -249,6 +278,14 @@ resource "aws_ecs_task_definition" "kenesparta" {
         {
           name  = "RUST_LOG"
           value = "info"
+        },
+        {
+          name  = "AWS_REGION"
+          value = var.region
+        },
+        {
+          name  = "DYNAMODB_TABLE_NAME"
+          value = "kenesparta-blog-posts"
         }
       ]
     }

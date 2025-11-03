@@ -16,6 +16,12 @@ leptos_meta = { version = "0.8.0" }
 tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
 tower-http = { version = "0.6", features = ["compression-full"], optional = true }
 wasm-bindgen = { version = "0.2.105", optional = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["serde", "v4", "js"] }
+aws-config = { version = "1.5", optional = true }
+aws-sdk-dynamodb = { version = "1.60", optional = true }
 
 [features]
 hydrate = [
@@ -28,6 +34,8 @@ ssr = [
     "dep:tokio",
     "dep:leptos_axum",
     "dep:tower-http",
+    "dep:aws-config",
+    "dep:aws-sdk-dynamodb",
     "leptos/ssr",
     "leptos_meta/ssr",
     "leptos_router/ssr",
@@ -39,6 +47,7 @@ opt-level = 'z'
 lto = true
 codegen-units = 1
 panic = "abort"
+strip = true
 
 [package.metadata.leptos]
 output-name = "kenespartadev"
@@ -52,6 +61,7 @@ end2end-cmd = "npx playwright test"
 end2end-dir = "end2end"
 browserquery = "defaults"
 env = "DEV"
+wasm-opt = true
 
 bin-features = ["ssr"]
 bin-default-features = false

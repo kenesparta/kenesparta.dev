@@ -1,12 +1,12 @@
 use crate::components::StickyNavBar;
 use crate::constants::{BUCKET_URL, ICON_URL, META_DESCRIPTION};
-use crate::pages::{About, Blog, Experience, HomePage, Projects};
+use crate::pages::{About, BlogList, BlogPost, Experience, HomePage, Projects};
 use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, Link, Meta, MetaTags, Stylesheet, Title};
 use leptos_router::hooks::use_location;
 use leptos_router::{
     components::{Route, Router, Routes},
-    StaticSegment,
+    path, StaticSegment,
 };
 
 #[component]
@@ -35,7 +35,8 @@ pub fn App() -> impl IntoView {
                     <Routes fallback=|| "Page not found.".into_view()>
                         <Route path=StaticSegment("") view=HomePage/>
                         <Route path=StaticSegment("/about") view=About/>
-                        <Route path=StaticSegment("/blog") view=Blog/>
+                        <Route path=StaticSegment("/blog") view=BlogList/>
+                        <Route path=path!("/blog/:slug") view=BlogPost/>
                         <Route path=StaticSegment("/experience") view=Experience/>
                         <Route path=StaticSegment("/projects") view=Projects/>
                     </Routes>

@@ -15,7 +15,7 @@ EXPOSE 3001
 
 # Set environment variables for development
 ENV RUST_LOG="debug"
-ENV LEPTOS_SASS_VERSION=1.93.2
+ENV LEPTOS_SASS_VERSION=1.93.3
 
 # Use cargo leptos watch for hot-reloading
 CMD ["cargo", "leptos", "watch", "--hot-reload"]
