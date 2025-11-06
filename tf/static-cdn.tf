@@ -98,8 +98,8 @@ resource "aws_cloudfront_distribution" "cdn_distribution" {
     response_headers_policy_id = aws_cloudfront_response_headers_policy.cors_policy.id
 
     viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 0
-    default_ttl            = 3600
+    min_ttl                = 86400
+    default_ttl            = 86400
     max_ttl                = 86400
     compress               = true
   }

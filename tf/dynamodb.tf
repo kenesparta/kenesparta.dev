@@ -1,6 +1,6 @@
 resource "aws_dynamodb_table" "blog_posts" {
   name         = "kenesparta-blog-posts"
-  billing_mode = "PAY_PER_REQUEST" # On-demand pricing for low traffic
+  billing_mode = "PAY_PER_REQUEST"
   hash_key     = "post_id"
   range_key    = "created_at"
 
@@ -19,7 +19,6 @@ resource "aws_dynamodb_table" "blog_posts" {
     type = "S"
   }
 
-  # GSI for querying posts by status and date
   global_secondary_index {
     name            = "StatusCreatedAtIndex"
     hash_key        = "status"

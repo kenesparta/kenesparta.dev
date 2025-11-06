@@ -1,8 +1,8 @@
 use crate::components::StickyNavBar;
-use crate::constants::{BUCKET_URL, ICON_URL, META_DESCRIPTION};
+use crate::constants::{BUCKET_URL, GLOBAL_FONTS, ICON_URL, META_DESCRIPTION};
 use crate::pages::{About, BlogList, BlogPost, Experience, HomePage, Projects};
 use leptos::prelude::*;
-use leptos_meta::{provide_meta_context, Link, Meta, MetaTags, Stylesheet, Title};
+use leptos_meta::*;
 use leptos_router::hooks::use_location;
 use leptos_router::{
     components::{Route, Router, Routes},
@@ -14,12 +14,16 @@ pub fn App() -> impl IntoView {
     provide_meta_context();
 
     view! {
-        <Stylesheet id="leptos" href="/pkg/kenespartadev.css"/>
-
         <Title text="Ken Esparta"/>
 
         <Link rel="icon" type_="image/x-icon" href={ICON_URL}/>
+        <Link rel="dns-prefetch" href={BUCKET_URL}/>
         <Link rel="preconnect" href={BUCKET_URL} crossorigin="anonymous"/>
+
+        <FontsPrefetch fonts=GLOBAL_FONTS/>
+
+        <Link rel="preload" href="/pkg/kenespartadev.css" as_="style"/>
+        <Stylesheet id="leptos" href="/pkg/kenespartadev.css"/>
 
         <Meta charset="UTF-8"/>
         <Meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -66,6 +70,20 @@ fn OgProperties() -> impl IntoView {
         <Meta property="og:title" content="Ken Esparta - Software Engineer"/>
         <Meta property="og:description" content={META_DESCRIPTION}/>
         <Meta property="og:image" content={ICON_URL}/>
+    }
+}
+
+#[component]
+fn FontsPrefetch(fonts: &'static [&'static str]) -> impl IntoView {
+    view! {
+        {fonts.iter().map(|font_file| {
+            view! {
+                <Link rel="preload"
+                href=format!("{}/fonts/{}", BUCKET_URL, font_file) as_="font"
+                type_="font/woff2"
+                crossorigin="anonymous"/>
+            }
+        }).collect_view()}
     }
 }
 

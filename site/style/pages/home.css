@@ -11,8 +11,8 @@
 
 .home__logo {
     border-radius: 50%;
-    width: 15rem;
-    height: 15rem;
+    width: 260px;
+    height: 264px;
     object-fit: cover;
     border: .2em solid var(--secondary-color);
     display: block;

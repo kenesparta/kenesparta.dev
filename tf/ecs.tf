@@ -336,14 +336,75 @@ resource "aws_ecs_service" "kenesparta" {
   )
 }
 
+resource "aws_cloudfront_distribution" "kenesparta" {
+  enabled         = true
+  is_ipv6_enabled = true
+  http_version    = "http3"
+  price_class     = "PriceClass_100"
+  comment         = "Distribution for main page"
+
+  origin {
+    domain_name = aws_lb.kenesparta.dns_name
+    origin_id   = "alb-origin"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  default_cache_behavior {
+    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "alb-origin"
+    viewer_protocol_policy = "redirect-to-https"
+
+    forwarded_values {
+      query_string = true
+      headers      = ["Host"]
+
+      cookies {
+        forward = "all"
+      }
+    }
+
+    min_ttl     = 86400
+    default_ttl = 86400
+    max_ttl     = 86400
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    acm_certificate_arn      = aws_acm_certificate.kenesparta_cert.arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
+  }
+
+  aliases = [var.primary_dns]
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "kenesparta-cloudfront"
+    }
+  )
+}
+
 resource "aws_route53_record" "kenesparta_main" {
   zone_id = local.zone_id
   name    = var.primary_dns
   type    = "A"
 
   alias {
-    name                   = aws_lb.kenesparta.dns_name
-    zone_id                = aws_lb.kenesparta.zone_id
-    evaluate_target_health = true
+    name                   = aws_cloudfront_distribution.kenesparta.domain_name
+    zone_id                = aws_cloudfront_distribution.kenesparta.hosted_zone_id
+    evaluate_target_health = false
   }
 }

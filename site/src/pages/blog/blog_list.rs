@@ -1,5 +1,5 @@
-use crate::blog::{get_published_posts};
-use crate::components::{BlogPostList};
+use crate::blog::get_published_posts;
+use crate::components::BlogPostList;
 use leptos::prelude::*;
 
 #[component]
