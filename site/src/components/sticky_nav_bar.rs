@@ -15,6 +15,7 @@ pub fn StickyNavBar() -> impl IntoView {
                     <span class="delius-swash-caps sticky-nav-bar__name-last">"Esparta"</span>
                 </div>
             </a>
+
             <HeaderLinks/>
         </nav>
     }

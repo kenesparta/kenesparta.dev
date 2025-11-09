@@ -3,6 +3,7 @@ mod blog;
 mod experience;
 mod home;
 mod projects;
+mod errors;
 
 pub use about::*;
 pub use blog::blog_list::*;

@@ -3,7 +3,7 @@ resource "aws_ecs_cluster" "kenesparta" {
 
   setting {
     name  = "containerInsights"
-    value = "enabled"
+    value = "disabled"
   }
 
   tags = merge(

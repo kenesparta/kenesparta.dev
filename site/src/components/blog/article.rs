@@ -3,7 +3,7 @@ use crate::components::blog::tags::Tags;
 use crate::components::blog::utils::published_date;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
-use leptos_router::components::A;
+use crate::components::go_back::GoBack;
 
 #[component]
 pub fn Article(post: BlogPost) -> impl IntoView {
@@ -12,10 +12,7 @@ pub fn Article(post: BlogPost) -> impl IntoView {
     view! {
         <article class="blog-post">
             <header class="post-header">
-                <A href="/blog" attr:class="back-link">
-                    "\u{2190} Back to Blog"
-                </A>
-
+                <GoBack go_to="blog" text="Back to Blog"/>
                 <h1 class="post-title">{post.title}</h1>
                 <div class="post-meta">
                     <span class="post-author">{post.author}</span>

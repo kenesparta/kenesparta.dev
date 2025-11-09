@@ -1,5 +1,5 @@
 use crate::components::StickyNavBar;
-use crate::constants::{BUCKET_URL, GLOBAL_FONTS, ICON_URL, META_DESCRIPTION};
+use crate::constants::{BUCKET_URL, GLOBAL_FONTS, ICON_URL, META_DESCRIPTION, META_TITLE, SITE_URL};
 use crate::pages::{About, BlogList, BlogPost, Experience, HomePage, Projects};
 use leptos::prelude::*;
 use leptos_meta::*;
@@ -14,21 +14,15 @@ pub fn App() -> impl IntoView {
     provide_meta_context();
 
     view! {
-        <Title text="Ken Esparta"/>
-
+        <Title text={META_TITLE}/>
         <Link rel="icon" type_="image/x-icon" href={ICON_URL}/>
+
         <Link rel="dns-prefetch" href={BUCKET_URL}/>
         <Link rel="preconnect" href={BUCKET_URL} crossorigin="anonymous"/>
-
-        <FontsPrefetch fonts=GLOBAL_FONTS/>
-
         <Link rel="preload" href="/pkg/kenespartadev.css" as_="style"/>
         <Stylesheet id="leptos" href="/pkg/kenespartadev.css"/>
 
-        <Meta charset="UTF-8"/>
-        <Meta name="viewport" content="width=device-width, initial-scale=1"/>
-        <Meta name="description" content={META_DESCRIPTION}/>
-        <Meta name="googlebot" content="index,follow,snippet,archive"/>
+        <FontsPrefetch fonts=GLOBAL_FONTS/>
 
         <OgProperties/>
 
@@ -51,25 +45,17 @@ pub fn App() -> impl IntoView {
 }
 
 #[component]
-fn ConditionalNavBar() -> impl IntoView {
-    let location = use_location();
-    let is_home = move || location.pathname.get() == "/";
-
-    view! {
-        <Show when=move || !is_home()>
-            <StickyNavBar/>
-        </Show>
-    }
-}
-
-#[component]
 fn OgProperties() -> impl IntoView {
     view! {
-        <Meta property="og:url" content="https://kenesparta.dev/"/>
+        <Meta property="og:url" content={SITE_URL}/>
         <Meta property="og:type" content="website"/>
-        <Meta property="og:title" content="Ken Esparta - Software Engineer"/>
+        <Meta property="og:title" content={META_TITLE}/>
         <Meta property="og:description" content={META_DESCRIPTION}/>
         <Meta property="og:image" content={ICON_URL}/>
+
+        <Meta name="viewport" content="width=device-width, initial-scale=1"/>
+        <Meta name="description" content={META_DESCRIPTION}/>
+        <Meta name="googlebot" content="index,follow,snippet,archive"/>
     }
 }
 
@@ -84,6 +70,18 @@ fn FontsPrefetch(fonts: &'static [&'static str]) -> impl IntoView {
                 crossorigin="anonymous"/>
             }
         }).collect_view()}
+    }
+}
+
+#[component]
+fn ConditionalNavBar() -> impl IntoView {
+    let location = use_location();
+    let is_home = move || location.pathname.get() == "/";
+
+    view! {
+        <Show when=move || !is_home()>
+            <StickyNavBar/>
+        </Show>
     }
 }
 
