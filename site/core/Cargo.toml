@@ -1,0 +1,8 @@
+[package]
+name = "kenespartadev-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0" , features = ["serde", "v4", "js"] }
