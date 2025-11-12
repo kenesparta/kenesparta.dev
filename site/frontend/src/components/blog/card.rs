@@ -1,4 +1,4 @@
-use crate::blog::BlogPostSummary;
+use crate::blog::BlogPostSummaryDTO;
 use crate::components::blog::tags::Tags;
 use crate::components::blog::utils::published_date;
 use leptos::prelude::*;
@@ -6,7 +6,7 @@ use leptos::{component, view, IntoView};
 use leptos_router::components::A;
 
 #[component]
-pub fn BlogPostList(posts: Vec<BlogPostSummary>) -> impl IntoView {
+pub fn BlogPostList(posts: Vec<BlogPostSummaryDTO>) -> impl IntoView {
     if posts.is_empty() {
         return view! {
             <div class="no-posts">
@@ -21,7 +21,7 @@ pub fn BlogPostList(posts: Vec<BlogPostSummary>) -> impl IntoView {
             <For
                 each=move || posts.clone()
                 key=|post| post.post_id.clone()
-                children=move |post: BlogPostSummary| {
+                children=move |post: BlogPostSummaryDTO| {
                     view! { <BlogPostCard post=post/> }
                 }
             />
@@ -31,7 +31,7 @@ pub fn BlogPostList(posts: Vec<BlogPostSummary>) -> impl IntoView {
 }
 
 #[component]
-pub fn BlogPostCard(post: BlogPostSummary) -> impl IntoView {
+pub fn BlogPostCard(post: BlogPostSummaryDTO) -> impl IntoView {
     let published_date = published_date(post.published_at);
 
     view! {

@@ -1,12 +1,12 @@
-use crate::blog::BlogPost;
+use crate::blog::BlogPostDTO;
 use crate::components::blog::tags::Tags;
 use crate::components::blog::utils::published_date;
+use crate::components::go_back::GoBack;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
-use crate::components::go_back::GoBack;
 
 #[component]
-pub fn Article(post: BlogPost) -> impl IntoView {
+pub fn Article(post: BlogPostDTO) -> impl IntoView {
     let published_date = published_date(post.published_at);
 
     view! {

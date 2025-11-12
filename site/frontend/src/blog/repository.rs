@@ -1,5 +1,5 @@
-use crate::blog::blog::{BlogPost, PostStatus};
 use aws_sdk_dynamodb::{types::AttributeValue, Client};
+use kenespartadev_core::blog::entity::{BlogPost, PostStatus};
 use std::collections::HashMap;
 
 pub struct BlogRepository {
@@ -12,61 +12,61 @@ impl BlogRepository {
         Self { client, table_name }
     }
 
-    pub async fn create_post(&self, post: &BlogPost) -> Result<(), String> {
-        let mut item = HashMap::new();
-        item.insert(
-            "post_id".to_string(),
-            AttributeValue::S(post.post_id.clone()),
-        );
-        item.insert("title".to_string(), AttributeValue::S(post.title.clone()));
-        item.insert("slug".to_string(), AttributeValue::S(post.slug.clone()));
-        item.insert(
-            "content".to_string(),
-            AttributeValue::S(post.content.clone()),
-        );
-        item.insert(
-            "summary".to_string(),
-            AttributeValue::S(post.summary.clone()),
-        );
-        item.insert("author".to_string(), AttributeValue::S(post.author.clone()));
-        item.insert(
-            "tags".to_string(),
-            AttributeValue::L(
-                post.tags
-                    .iter()
-                    .map(|t| AttributeValue::S(t.clone()))
-                    .collect(),
-            ),
-        );
-        item.insert(
-            "status".to_string(),
-            AttributeValue::S(post.status.as_str().to_string()),
-        );
-        item.insert(
-            "created_at".to_string(),
-            AttributeValue::N(post.created_at.to_string()),
-        );
-        item.insert(
-            "updated_at".to_string(),
-            AttributeValue::N(post.updated_at.to_string()),
-        );
-        if let Some(published_at) = post.published_at {
-            item.insert(
-                "published_at".to_string(),
-                AttributeValue::N(published_at.to_string()),
-            );
-        }
-
-        self.client
-            .put_item()
-            .table_name(&self.table_name)
-            .set_item(Some(item))
-            .send()
-            .await
-            .map_err(|e| format!("Failed to create post: {}", e))?;
-
-        Ok(())
-    }
+    // pub async fn create_post(&self, post: &BlogPost) -> Result<(), String> {
+    //     let mut item = HashMap::new();
+    //     item.insert(
+    //         "post_id".to_string(),
+    //         AttributeValue::S(post.post_id.clone()),
+    //     );
+    //     item.insert("title".to_string(), AttributeValue::S(post.title.clone()));
+    //     item.insert("slug".to_string(), AttributeValue::S(post.slug.clone()));
+    //     item.insert(
+    //         "content".to_string(),
+    //         AttributeValue::S(post.content.clone()),
+    //     );
+    //     item.insert(
+    //         "summary".to_string(),
+    //         AttributeValue::S(post.summary.clone()),
+    //     );
+    //     item.insert("author".to_string(), AttributeValue::S(post.author.clone()));
+    //     item.insert(
+    //         "tags".to_string(),
+    //         AttributeValue::L(
+    //             post.tags
+    //                 .iter()
+    //                 .map(|t| AttributeValue::S(t.clone()))
+    //                 .collect(),
+    //         ),
+    //     );
+    //     item.insert(
+    //         "status".to_string(),
+    //         AttributeValue::S(post.status.as_str().to_string()),
+    //     );
+    //     item.insert(
+    //         "created_at".to_string(),
+    //         AttributeValue::N(post.created_at.to_string()),
+    //     );
+    //     item.insert(
+    //         "updated_at".to_string(),
+    //         AttributeValue::N(post.updated_at.to_string()),
+    //     );
+    //     if let Some(published_at) = post.published_at {
+    //         item.insert(
+    //             "published_at".to_string(),
+    //             AttributeValue::N(published_at.to_string()),
+    //         );
+    //     }
+    //
+    //     self.client
+    //         .put_item()
+    //         .table_name(&self.table_name)
+    //         .set_item(Some(item))
+    //         .send()
+    //         .await
+    //         .map_err(|e| format!("Failed to create post: {}", e))?;
+    //
+    //     Ok(())
+    // }
 
     pub async fn get_post_by_id(&self, post_id: &str) -> Result<Option<BlogPost>, String> {
         let result = self

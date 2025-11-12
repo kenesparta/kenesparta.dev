@@ -8,13 +8,7 @@ services:
       - "3000:3000"
       - "3001:3001"
     volumes:
-      - ./src:/app/src
-      - ./style:/app/style
-      - ./public:/app/public
-      - ./Cargo.toml:/app/Cargo.toml
-      - ./Cargo.lock:/app/Cargo.lock
-      - cargo-cache:/usr/local/cargo/registry
-      - target-cache:/app/target
+      - .:/app/.
       - ~/.aws:/root/.aws:ro
     environment:
       - RUST_LOG=debug

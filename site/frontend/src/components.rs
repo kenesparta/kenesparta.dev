@@ -1,10 +1,10 @@
 mod blog;
 mod coming;
+mod go_back;
 mod header;
 mod heder_links;
 mod social_links;
 mod sticky_nav_bar;
-mod go_back;
 
 pub use blog::*;
 pub use coming::*;

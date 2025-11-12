@@ -1,5 +1,7 @@
 use crate::components::StickyNavBar;
-use crate::constants::{BUCKET_URL, GLOBAL_FONTS, ICON_URL, META_DESCRIPTION, META_TITLE, SITE_URL};
+use crate::constants::{
+    BUCKET_URL, GLOBAL_FONTS, ICON_URL, META_DESCRIPTION, META_TITLE, SITE_URL,
+};
 use crate::pages::{About, BlogList, BlogPost, Experience, HomePage, Projects};
 use leptos::prelude::*;
 use leptos_meta::*;

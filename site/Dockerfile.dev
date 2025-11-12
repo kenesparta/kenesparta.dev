@@ -7,7 +7,7 @@ RUN curl --proto '=https' --tlsv1.2 -LsSf https://github.com/leptos-rs/cargo-lep
 # Install sass for styling
 RUN apt-get update && apt-get install -y npm && npm install -g sass
 
-WORKDIR /app
+WORKDIR /app/frontend
 
 # Expose both the application port and hot-reload port
 EXPOSE 3000

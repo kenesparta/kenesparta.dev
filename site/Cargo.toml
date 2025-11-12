@@ -1,0 +1,14 @@
+[workspace]
+resolver = "3"
+
+members = [
+    # Main Page Render
+    "frontend",
+
+    # Domain
+    "core",
+
+    # Backend
+    "backend/cli",
+    "backend/api",
+]

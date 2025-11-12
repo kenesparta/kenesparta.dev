@@ -4,10 +4,10 @@ RUN rustup target add wasm32-unknown-unknown
 RUN curl --proto '=https' --tlsv1.2 -LsSf https://github.com/leptos-rs/cargo-leptos/releases/download/v0.2.47/cargo-leptos-installer.sh | sh
 WORKDIR /app
 
-COPY Cargo.toml ./
-COPY src ./src
-COPY style ./style
-COPY public ./public
+COPY frontend/Cargo.toml ./
+COPY frontend/src ./src
+COPY frontend/style ./style
+COPY frontend/public ./public
 
 ENV LEPTOS_SASS_VERSION=1.93.2
 
