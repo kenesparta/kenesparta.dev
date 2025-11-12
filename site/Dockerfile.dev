@@ -7,7 +7,7 @@ RUN curl --proto '=https' --tlsv1.2 -LsSf https://github.com/leptos-rs/cargo-lep
 # Install sass for styling
 RUN apt-get update && apt-get install -y npm && npm install -g sass
 
-WORKDIR /app/frontend
+WORKDIR /app
 
 # Expose both the application port and hot-reload port
 EXPOSE 3000
@@ -15,7 +15,7 @@ EXPOSE 3001
 
 # Set environment variables for development
 ENV RUST_LOG="debug"
-ENV LEPTOS_SASS_VERSION=1.93.3
+ENV LEPTOS_SASS_VERSION=1.94.0
 
 # Use cargo leptos watch for hot-reloading
 CMD ["cargo", "leptos", "watch", "--hot-reload"]

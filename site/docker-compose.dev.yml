@@ -9,10 +9,14 @@ services:
       - "3001:3001"
     volumes:
       - .:/app/.
+
+      - cargo-cache:/usr/local/cargo/registry
+      - target-cache:/app/target
+
       - ~/.aws:/root/.aws:ro
     environment:
       - RUST_LOG=debug
-      - LEPTOS_SASS_VERSION=1.93.3
+      - LEPTOS_SASS_VERSION=1.94.0
       - AWS_PROFILE=AdministratorAccess-711387133796
     networks:
       - dev-network
