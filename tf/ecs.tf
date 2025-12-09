@@ -170,8 +170,7 @@ resource "aws_lb" "kenesparta" {
   security_groups    = [aws_security_group.alb.id]
   subnets = [
     aws_subnet.public_1.id,
-    aws_subnet.public_2.id,
-    aws_subnet.public_3.id
+    aws_subnet.public_2.id
   ]
 
   enable_deletion_protection       = false
@@ -310,8 +309,7 @@ resource "aws_ecs_service" "kenesparta" {
   network_configuration {
     subnets = [
       aws_subnet.public_1.id,
-      aws_subnet.public_2.id,
-      aws_subnet.public_3.id
+      aws_subnet.public_2.id
     ]
     security_groups  = [aws_security_group.ecs_tasks.id]
     assign_public_ip = true

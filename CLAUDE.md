@@ -33,13 +33,14 @@ This is a personal portfolio website built with Leptos (Rust full-stack web fram
 │   ├── Cargo.toml        # Rust dependencies and Leptos config
 │   └── Dockerfile        # Multi-stage Docker build
 ├── tf/                   # Terraform infrastructure
-│   ├── dns/              # DNS, ECS/ECR, CDN infrastructure
-│   │   ├── vpc.tf        # VPC, subnets, internet gateway, route tables
-│   │   ├── ecs.tf        # ECS cluster, ECR repo, security groups
-│   │   ├── iam-*.tf      # IAM roles for GitHub Actions and ECS
-│   │   ├── cdn.tf        # CloudFront and S3 for static CDN (cdn.kenesparta.dev)
-│   │   └── dns-*.tf      # Route53 zones and records
-│   └── backend/          # Terraform backend infrastructure
+│   ├── network.tf        # VPC, subnets, internet gateway, route tables
+│   ├── ecs.tf            # ECS cluster, ECR repo, security groups, ALB
+│   ├── iam-*.tf          # IAM roles for GitHub Actions and ECS
+│   ├── static-cdn.tf     # CloudFront and S3 for static CDN (cdn.kenesparta.dev)
+│   ├── dns-*.tf          # Route53 zones and records
+│   ├── acm.tf            # ACM certificate for SSL/TLS
+│   ├── ecr.tf            # ECR repository configuration
+│   └── dynamodb.tf       # DynamoDB table for blog posts
 ├── .github/workflows/    # CI/CD pipelines
 └── Makefile              # Build shortcuts
 ```
@@ -91,23 +92,14 @@ docker run -p 3000:3000 kenespartadev
 
 ### Terraform Infrastructure
 
-Both `tf/dns/` and `tf/backend/` require a `.env` file with AWS SSO profile configuration:
+The `tf/` directory requires a `.env` file with AWS SSO profile configuration:
 ```bash
 TF_VAR_aws_sso_profile=your-profile-name
 ```
 
-**DNS Infrastructure (tf/dns/):**
+**Infrastructure Management:**
 ```bash
-cd tf/dns
-make login       # AWS SSO login
-make dev/plan    # Plan changes
-make dev/apply   # Apply changes
-make dev/destroy # Destroy resources
-```
-
-**Backend Infrastructure (tf/backend/):**
-```bash
-cd tf/backend
+cd tf
 make login       # AWS SSO login
 make dev/plan    # Plan changes
 make dev/apply   # Apply changes
@@ -161,11 +153,11 @@ The application is deployed on AWS using ECS Fargate with Application Load Balan
 
 **VPC (Virtual Private Cloud):**
 - Custom VPC with CIDR 10.0.0.0/16
-- 3 public subnets across 3 availability zones (10.0.1.0/24, 10.0.2.0/24, 10.0.3.0/24)
+- 2 public subnets across 2 availability zones (10.0.1.0/24, 10.0.2.0/24)
 - Internet Gateway for public internet access
 - Route tables configured for internet routing
-- VPC Flow Logs enabled (7-day retention for debugging)
 - No NAT Gateway (saves ~$32/month, not needed for public ECS tasks)
+- 2 AZ configuration balances high availability with reduced cross-zone traffic costs
 
 **ECR (Elastic Container Registry):**
 - Repository: `kenesparta-dev`
@@ -207,9 +199,9 @@ The application is deployed on AWS using ECS Fargate with Application Load Balan
 
 **Cost Optimization:**
 - No NAT Gateway (~$32/month saved, using public subnets only)
+- 2 AZs instead of 3 (reduces cross-zone traffic costs while maintaining HA)
 - Single Fargate task with minimal resources (256 CPU / 512 MB)
 - ALB only (~$16-20/month, simpler than CloudFront + ALB setup)
-- VPC Flow Logs for debugging only (can be disabled in production)
 
 ### CI/CD Pipeline
 
@@ -219,7 +211,7 @@ GitHub Actions workflow (`.github/workflows/page.yml`):
 - Updates ECS task definition and deploys to ECS cluster
 
 **GitHub Secrets Required:**
-- `AWS_ROLE_ARN`: IAM role ARN from `tf/dns/iam-resume-s3.tf` output
+- `AWS_ROLE_ARN`: IAM role ARN from `tf/iam-main.tf` output
 
 **Workflow Configuration:**
 - ECR Repository: `kenesparta-dev`
