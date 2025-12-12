@@ -21,7 +21,7 @@ Route53 (kenesparta.dev)
    ↓
 Application Load Balancer (HTTPS)
    ↓
-ECS Fargate Tasks (3 AZs)
+ECS Fargate Tasks (2 AZs)
    ↓
 Leptos App (Axum + Brotli compression)
 ```
@@ -103,33 +103,22 @@ The multi-stage Dockerfile:
 
 ### Setup
 
-Both `tf/dns/` and `tf/backend/` require a `.env` file with AWS SSO profile:
+The `tf/` directory requires a `.env` file with AWS SSO profile:
 
 ```bash
 TF_VAR_aws_sso_profile=your-profile-name
 ```
 
-### DNS Infrastructure (tf/dns/)
+### Infrastructure Management
 
-Manages ECS cluster, ALB, Route53, ACM certificates, and networking.
+Manages ECS cluster, ALB, Route53, ACM certificates, networking, and static CDN.
 
 ```bash
-cd tf/dns
+cd tf
 make login       # AWS SSO login
 make dev/plan    # Plan changes
 make dev/apply   # Apply changes
 make dev/destroy # Destroy resources
-```
-
-### Backend Infrastructure (tf/backend/)
-
-Manages S3 bucket for Terraform state storage.
-
-```bash
-cd tf/backend
-make login       # AWS SSO login
-make dev/plan    # Plan changes
-make dev/apply   # Apply changes
 ```
 
 **Note**: Terraform state is stored in S3 bucket `tf.kenesparta.dev`
@@ -153,12 +142,14 @@ make dev/apply   # Apply changes
 │   └── Dockerfile         # Multi-stage build
 │
 ├── tf/                    # Terraform infrastructure
-│   ├── dns/               # Main infrastructure
-│   │   ├── vpc.tf        # VPC, subnets, IGW
-│   │   ├── ecs.tf        # ECS, ALB, security groups
-│   │   ├── iam-*.tf      # IAM roles
-│   │   └── dns-*.tf      # Route53, ACM
-│   └── backend/           # State management
+│   ├── network.tf        # VPC, subnets, IGW, route tables
+│   ├── ecs.tf            # ECS cluster, ALB, security groups
+│   ├── ecr.tf            # ECR repository
+│   ├── iam-*.tf          # IAM roles for GitHub Actions and ECS
+│   ├── dns-*.tf          # Route53 zones and records
+│   ├── acm.tf            # ACM certificate for SSL/TLS
+│   ├── static-cdn.tf     # CloudFront and S3 for static CDN
+│   └── dynamodb.tf       # DynamoDB table for blog posts
 │
 ├── .github/workflows/     # CI/CD pipelines
 └── Makefile              # Build shortcuts
@@ -167,7 +158,7 @@ make dev/apply   # Apply changes
 ## AWS Resources
 
 ### Networking
-- **VPC**: Custom VPC (10.0.0.0/16) with 3 public subnets across 3 AZs
+- **VPC**: Custom VPC (10.0.0.0/16) with 2 public subnets across 2 AZs
 - **Internet Gateway**: For public internet access
 - **No NAT Gateway**: Cost optimization (using public subnets)
 
@@ -253,9 +244,9 @@ From `Cargo.toml`:
 ### Cost Optimization
 
 - Single Fargate task (minimal resources)
-- No CloudFront (simplified architecture)
 - No NAT Gateway (using public subnets)
-- ALB only (~$16-20/month vs CloudFront + ALB)
+- 2 AZs instead of 3 (reduces cross-zone traffic costs while maintaining HA)
+- ALB only (~$16-20/month)
 
 ## License
 
