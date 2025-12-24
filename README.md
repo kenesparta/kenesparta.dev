@@ -1,6 +1,6 @@
 # kenesparta.dev
 
-Personal portfolio website built with Leptos (Rust full-stack web framework) and deployed on AWS ECS.
+Personal portfolio website built with Leptos (Rust full-stack web framework) and deployed on AWS App Runner.
 
 ## Tech Stack
 
@@ -9,7 +9,7 @@ Personal portfolio website built with Leptos (Rust full-stack web framework) and
 - **Compression**: tower-http with Brotli and Gzip support
 - **Styling**: SCSS (compiled via cargo-leptos)
 - **Testing**: Playwright for end-to-end tests
-- **Infrastructure**: Terraform (AWS ECS, ALB, Route53, ACM)
+- **Infrastructure**: Terraform (AWS App Runner, ECR, Route53, ACM)
 - **CI/CD**: GitHub Actions with AWS OIDC authentication
 
 ## Architecture
@@ -19,9 +19,7 @@ Internet
    ↓
 Route53 (kenesparta.dev)
    ↓
-Application Load Balancer (HTTPS)
-   ↓
-ECS Fargate Tasks (2 AZs)
+AWS App Runner (HTTPS, auto-scaling)
    ↓
 Leptos App (Axum + Brotli compression)
 ```
@@ -111,7 +109,7 @@ TF_VAR_aws_sso_profile=your-profile-name
 
 ### Infrastructure Management
 
-Manages ECS cluster, ALB, Route53, ACM certificates, networking, and static CDN.
+Manages App Runner service, ECR, Route53, ACM certificates, and DynamoDB.
 
 ```bash
 cd tf
@@ -141,15 +139,13 @@ make dev/destroy # Destroy resources
 │   ├── Cargo.toml         # Rust dependencies
 │   └── Dockerfile         # Multi-stage build
 │
-├── tf/                    # Terraform infrastructure
-│   ├── network.tf        # VPC, subnets, IGW, route tables
-│   ├── ecs.tf            # ECS cluster, ALB, security groups
-│   ├── ecr.tf            # ECR repository
-│   ├── iam-*.tf          # IAM roles for GitHub Actions and ECS
-│   ├── dns-*.tf          # Route53 zones and records
-│   ├── acm.tf            # ACM certificate for SSL/TLS
-│   ├── static-cdn.tf     # CloudFront and S3 for static CDN
-│   └── dynamodb.tf       # DynamoDB table for blog posts
+├── tf/                         # Terraform infrastructure
+│   ├── app-runner-ke-dev.tf   # App Runner service and custom domain
+│   ├── ecr.tf                 # ECR repository
+│   ├── iam-*.tf               # IAM roles for GitHub Actions and App Runner
+│   ├── dns-*.tf               # Route53 zones and records
+│   ├── acm.tf                 # ACM certificate for SSL/TLS
+│   └── dynamodb.tf            # DynamoDB table for blog posts
 │
 ├── .github/workflows/     # CI/CD pipelines
 └── Makefile              # Build shortcuts
@@ -157,45 +153,40 @@ make dev/destroy # Destroy resources
 
 ## AWS Resources
 
-### Networking
-- **VPC**: Custom VPC (10.0.0.0/16) with 2 public subnets across 2 AZs
-- **Internet Gateway**: For public internet access
-- **No NAT Gateway**: Cost optimization (using public subnets)
+### Compute (App Runner)
+- **Service**: `kenesparta-dev`
+- **Resources**: 256 CPU units, 512 MB memory
+- **Port**: 3000
+- **Health Checks**: HTTP on path `/`
+- **Auto-scaling**: Managed by App Runner
+- **HTTPS**: Automatic TLS termination
 
-### Compute
-- **ECS Cluster**: `kenesparta-cluster` with Container Insights
-- **ECS Service**: Fargate launch type with 1 task
-- **Task Resources**: 256 CPU units, 512 MB memory
-- **Container**: `kenesparta-app` on port 3000
-
-### Load Balancing
-- **ALB**: Public-facing Application Load Balancer
-- **Target Group**: IP-based targeting for Fargate
-- **Listeners**: HTTP (redirects to HTTPS), HTTPS with TLS 1.3
-- **Health Checks**: HTTP on port 3000, path `/`
+### Container Registry
+- **ECR Repository**: `kenesparta-dev`
+- **Lifecycle Policy**: Keeps only the latest image
+- **Image Scanning**: Enabled on push
 
 ### Security
-- **ALB Security Group**: Allows 80/443 from internet
-- **ECS Tasks Security Group**: Allows 3000 from ALB only
-- **IAM Roles**: OIDC federation for GitHub Actions
+- **IAM Roles**: OIDC federation for GitHub Actions (no long-lived credentials)
+- **App Runner Access Role**: For pulling images from ECR
+- **Instance Role**: For DynamoDB access
 - **SSL/TLS**: ACM certificate for `*.kenesparta.dev`
 
-### DNS & CDN
-- **Route53**: A record alias to ALB
-- **ACM**: Wildcard certificate with DNS validation
+### DNS
+- **Route53**: A record alias to App Runner service
+- **Custom Domain**: `kenesparta.dev` with automatic certificate validation
 
-### Monitoring
-- **CloudWatch Logs**: `/ecs/kenesparta-dev` (7-day retention)
-- **Container Insights**: Enabled for ECS metrics
-- **VPC Flow Logs**: 7-day retention for debugging
+### Database
+- **DynamoDB Table**: `kenesparta-blog-posts`
+- **Billing**: Pay-per-request (on-demand)
+- **Features**: Point-in-time recovery, server-side encryption
 
 ## CI/CD Pipeline
 
 GitHub Actions workflow automatically:
 1. Builds Docker image on push to `main` or version tags
 2. Pushes image to AWS ECR
-3. Updates ECS task definition
-4. Deploys to ECS cluster with zero-downtime rolling update
+3. Triggers App Runner deployment
 
 ### Required Secrets
 
@@ -243,10 +234,10 @@ From `Cargo.toml`:
 
 ### Cost Optimization
 
-- Single Fargate task (minimal resources)
-- No NAT Gateway (using public subnets)
-- 2 AZs instead of 3 (reduces cross-zone traffic costs while maintaining HA)
-- ALB only (~$16-20/month)
+- App Runner with minimal resources (256 CPU / 512 MB)
+- Pay-per-use model (scales to zero when idle)
+- No ALB or NAT Gateway required
+- Simplified infrastructure (no VPC management)
 
 ## License
 
