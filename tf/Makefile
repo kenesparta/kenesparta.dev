@@ -22,3 +22,11 @@ dev/apply: dev/plan
 
 dev/destroy: dev/init
 	@terraform destroy
+
+dev/apply-apprun:
+	terraform apply -target=aws_apprunner_service.kenesparta \
+                      -target=aws_apprunner_custom_domain_association.kenesparta \
+                      -target=aws_iam_role.apprunner_access \
+                      -target=aws_iam_role.apprunner_instance \
+                      -target=aws_iam_role_policy.apprunner_dynamodb \
+                      -target=aws_iam_role_policy_attachment.apprunner_access_ecr

@@ -87,41 +87,21 @@ resource "aws_iam_role_policy" "github_actions_ecr" {
   })
 }
 
-resource "aws_iam_role_policy" "github_actions_ecs" {
-  name = "ecs-deploy-policy"
+resource "aws_iam_role_policy" "github_actions_apprunner" {
+  name = "apprunner-deploy-policy"
   role = aws_iam_role.github_actions_deploy.id
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AllowECSTaskDefinition"
+        Sid    = "AllowAppRunnerDeployment"
         Effect = "Allow"
         Action = [
-          "ecs:DescribeTaskDefinition",
-          "ecs:RegisterTaskDefinition"
+          "apprunner:StartDeployment",
+          "apprunner:DescribeService"
         ]
-        Resource = "*"
-      },
-      {
-        Sid    = "AllowECSServiceUpdate"
-        Effect = "Allow"
-        Action = [
-          "ecs:UpdateService",
-          "ecs:DescribeServices"
-        ]
-        Resource = "arn:aws:ecs:${var.region}:*:service/*/*"
-      },
-      {
-        Sid      = "AllowPassRole"
-        Effect   = "Allow"
-        Action   = "iam:PassRole"
-        Resource = "arn:aws:iam::*:role/*"
-        Condition = {
-          StringEquals = {
-            "iam:PassedToService" = "ecs-tasks.amazonaws.com"
-          }
-        }
+        Resource = "arn:aws:apprunner:${var.region}:*:service/kenesparta-dev/*"
       }
     ]
   })
