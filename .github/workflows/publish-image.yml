@@ -1,21 +1,7 @@
-# Builds the site image (Dockerfile) and publishes it to GitHub Packages
-# (GHCR) as ghcr.io/<owner>/kenespartadev:latest and :<short sha>.
-#
-# No secrets to configure: uses the workflow's own GITHUB_TOKEN
-# (packages: write).
-#
-# NOTE: this only publishes the image. Deployment (e.g. App Runner) is not
-# performed here; the tf/ infrastructure still points at ECR. Point your
-# deploy target at the published GHCR image when you are ready.
-#
-# After the FIRST push the package is created private: make it public on the
-# package page (Package settings -> Change visibility) if your deploy target
-# needs to pull it without credentials.
 name: publish-image
 
 on:
   push:
-    branches: [main]
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
     paths-ignore:
