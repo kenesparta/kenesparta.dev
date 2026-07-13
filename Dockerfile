@@ -1,16 +1,18 @@
 FROM rust:1.97-bookworm AS site-builder
 
 RUN rustup target add wasm32-unknown-unknown
-RUN curl --proto '=https' --tlsv1.2 -LsSf https://github.com/leptos-rs/cargo-leptos/releases/download/v0.2.47/cargo-leptos-installer.sh | sh
+# cargo-leptos 0.2.46 bundles the wasm-bindgen CLI 0.2.104, which MUST match the
+# pinned `wasm-bindgen = "=0.2.104"` in Cargo.toml. If you bump one, bump both.
+RUN curl --proto '=https' --tlsv1.2 -LsSf https://github.com/leptos-rs/cargo-leptos/releases/download/v0.2.46/cargo-leptos-installer.sh | sh
 WORKDIR /app
 
 # Whole workspace: the Leptos app (apps/backend) depends on the Bounded
 # Contexts under crates/.
 COPY . .
 
-ENV LEPTOS_SASS_VERSION=1.93.2
-
-RUN cd apps/backend && cargo leptos build --release
+# Build the CSS bundle from its parts (no Sass), then compile the app.
+RUN cat apps/backend/style/parts/*.css > apps/backend/style/main.css \
+ && cd apps/backend && cargo leptos build --release
 
 
 FROM gcr.io/distroless/cc-debian12 AS runtime

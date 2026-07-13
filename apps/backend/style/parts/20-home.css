@@ -1,0 +1,37 @@
+.home-container {
+    max-width: var(--measure);
+    margin-inline: auto;
+    padding-block: clamp(1rem, 5vw, 2.5rem);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: var(--gap);
+}
+
+.home__logo {
+    width: clamp(9rem, 34vw, 16rem);
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    border-radius: 50%;
+    border: 0.25rem solid var(--secondary-color);
+    background-color: var(--accent-color);
+}
+
+.home__title {
+    color: var(--primary-color);
+    font-size: clamp(2.25rem, 8vw, 3.25rem);
+    line-height: 1.1;
+}
+
+.home__subtitle {
+    color: var(--secondary-color);
+    font-size: clamp(1.2rem, 4.5vw, 1.7rem);
+    font-weight: 400;
+}
+
+.home__description {
+    max-width: var(--measure);
+    font-size: clamp(1rem, 2.6vw, 1.15rem);
+    text-wrap: pretty;
+}

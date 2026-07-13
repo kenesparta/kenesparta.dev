@@ -29,7 +29,10 @@ axum = { version = "0.8.0", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.7.0", features = ["compression-full"] }
 aws-config = "1.5"
-aws-sdk-dynamodb = "1.60"
+# default-features disabled to drop the legacy `rustls` feature (hyper-0.14 +
+# rustls 0.21 → the vulnerable rustls-webpki 0.101.7). We keep the modern
+# `default-https-client` connector (rustls-aws-lc / rustls 0.23).
+aws-sdk-dynamodb = { version = "1.60", default-features = false, features = ["default-https-client", "rt-tokio"] }
 
 # Hydration-only (wasm artifact). Pinned to the exact version whose bindgen
 # schema matches the wasm-bindgen CLI bundled with cargo-leptos 0.2.46.

@@ -1,0 +1,138 @@
+/* Blog list */
+.blog-container,
+.blog-post-container {
+    max-width: var(--measure);
+    margin-inline: auto;
+}
+
+.blog-header {
+    text-align: center;
+    margin-bottom: clamp(1.5rem, 5vw, 2.5rem);
+}
+
+.blog-header h1 {
+    color: var(--primary-color);
+    font-size: clamp(2rem, 6vw, 2.75rem);
+}
+
+.blog-header p {
+    margin-top: 0.5rem;
+}
+
+.blog-posts {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.blog-post-card {
+    padding: clamp(1rem, 3vw, 1.5rem);
+    border: 1px solid var(--accent-color);
+    border-radius: var(--radius);
+    transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.blog-post-card:hover {
+    border-color: var(--primary-color);
+    transform: translateY(-2px);
+}
+
+.post-title {
+    color: var(--secondary-color);
+    font-size: clamp(1.25rem, 4vw, 1.6rem);
+    line-height: 1.2;
+}
+
+.post-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin: 0.5rem 0;
+    font-size: 0.9rem;
+    color: var(--text-color);
+}
+
+.post-summary {
+    margin: 0.5rem 0 0.75rem;
+}
+
+/* Tags */
+.post-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.tag {
+    padding: 0.15rem 0.6rem;
+    font-size: 0.8rem;
+    color: var(--secondary-color);
+    background-color: var(--accent-color);
+    border-radius: 999px;
+}
+
+/* Single post */
+.post-header {
+    margin-bottom: 1.5rem;
+}
+
+.back-link {
+    display: inline-block;
+    margin-bottom: 1rem;
+}
+
+.blog-post .post-title {
+    margin: 0.5rem 0;
+}
+
+.post-content {
+    font-size: 1.05rem;
+}
+
+.post-content > * + * {
+    margin-top: 1rem;
+}
+
+.post-content h2,
+.post-content h3 {
+    color: var(--secondary-color);
+    margin-top: 1.5rem;
+}
+
+.post-content a {
+    color: var(--primary-color);
+    text-decoration: underline;
+}
+
+.post-content img {
+    border-radius: var(--radius);
+    margin-block: 1rem;
+}
+
+.post-content pre {
+    overflow-x: auto;
+    padding: 1rem;
+    border: 1px solid var(--accent-color);
+    border-radius: var(--radius);
+    background-color: rgba(0, 0, 0, 0.04);
+}
+
+.post-content code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.95em;
+}
+
+/* Async states */
+.loading,
+.error,
+.no-posts,
+.not-found {
+    padding: 2rem 0;
+    text-align: center;
+    color: var(--text-color);
+}
+
+.error h1,
+.not-found h1 {
+    color: var(--secondary-color);
+}

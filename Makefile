@@ -1,4 +1,6 @@
-.PHONY: dev/up dev/down dev/build dev/restart dev/logs dev/shell dev/clean
+.PHONY: dev/up dev/down dev/build dev/restart dev/logs dev/shell dev/clean css leptos/build
+
+STYLE_DIR := apps/backend/style
 
 # Development commands
 dev/up: ## Start development environment with hot-reload
@@ -22,5 +24,13 @@ dev/clean: ## Remove development volumes and containers
 prod/run:
 	docker compose up -d
 
-leptos/build:
+# Styles: concatenate style/parts/*.css (the source) into the single main.css
+# bundle cargo-leptos serves. main.css is GENERATED — edit files in parts/.
+# Run this after editing a part; cargo-leptos watches main.css, not the parts.
+css: ## Rebuild the CSS bundle from style/parts/*.css
+	@printf '/* GENERATED from style/parts/ by "make css" - do not edit; edit the parts. */\n\n' > $(STYLE_DIR)/main.css
+	@cat $(STYLE_DIR)/parts/*.css >> $(STYLE_DIR)/main.css
+	@echo "Rebuilt $(STYLE_DIR)/main.css from parts/"
+
+leptos/build: css
 	cd apps/backend && cargo leptos build --release

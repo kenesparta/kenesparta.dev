@@ -1,0 +1,18 @@
+/* Design tokens — palette, fonts, layout scale. Edit colors/fonts here. */
+:root {
+    /* Palette */
+    --primary-color: #0092FA;
+    --secondary-color: #000080;
+    --accent-color: #CAE9FF;
+    --background-color: #F1FAFF;
+    --text-color: #494E53;
+
+    /* Type & layout */
+    --font-body: "Solway", Georgia, serif;
+    --font-display: "Delius Swash Caps", cursive;
+    --font-alt: "Mooli", system-ui, sans-serif;
+    --measure: 44rem;   /* comfortable reading width */
+    --page-max: 60rem;  /* main column */
+    --radius: 10px;
+    --gap: clamp(0.75rem, 2.5vw, 1.25rem);
+}

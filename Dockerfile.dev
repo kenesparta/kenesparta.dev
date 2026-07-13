@@ -2,10 +2,8 @@ FROM rust:1.97
 
 # Install dependencies
 RUN rustup target add wasm32-unknown-unknown
-RUN curl --proto '=https' --tlsv1.2 -LsSf https://github.com/leptos-rs/cargo-leptos/releases/download/v0.2.47/cargo-leptos-installer.sh | sh
-
-# Install sass for styling
-RUN apt-get update && apt-get install -y npm && npm install -g sass
+# Keep cargo-leptos aligned with the wasm-bindgen "=0.2.104" pin (0.2.46 -> CLI 0.2.104).
+RUN curl --proto '=https' --tlsv1.2 -LsSf https://github.com/leptos-rs/cargo-leptos/releases/download/v0.2.46/cargo-leptos-installer.sh | sh
 
 WORKDIR /app
 
@@ -15,7 +13,6 @@ EXPOSE 3001
 
 # Set environment variables for development
 ENV RUST_LOG="debug"
-ENV LEPTOS_SASS_VERSION=1.94.0
 
-# cargo-leptos must run from the app crate inside the workspace.
-CMD ["sh", "-c", "cd apps/backend && cargo leptos watch --hot-reload"]
+# Build the CSS bundle from its parts, then run cargo-leptos from the app crate.
+CMD ["sh", "-c", "cat apps/backend/style/parts/*.css > apps/backend/style/main.css && cd apps/backend && cargo leptos watch --hot-reload"]

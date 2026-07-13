@@ -16,7 +16,6 @@ services:
       - ~/.aws:/root/.aws:ro
     environment:
       - RUST_LOG=debug
-      - LEPTOS_SASS_VERSION=1.94.0
       - AWS_PROFILE=AdministratorAccess-711387133796
     networks:
       - dev-network

@@ -1,39 +1,44 @@
 .sticky-nav-bar {
     position: sticky;
     top: 0;
-    z-index: 1000;
+    z-index: 100;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    padding: .2rem .2rem;
-    margin-bottom: 1rem;
+    gap: 0.5rem 1rem;
+    padding: 0.5rem clamp(0.75rem, 3vw, 1.25rem);
+    margin-bottom: clamp(1rem, 3vw, 1.5rem);
     background-color: var(--background-color);
-    border-bottom: 1px solid var(--primary-color);
+    border-bottom: 1px solid var(--accent-color);
+}
+
+.sticky-nav-bar .nav-links {
+    margin: 0;
 }
 
 .sticky-nav-bar__brand {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    text-decoration: none;
-    transition: transform 0.3s ease, opacity 0.3s ease;
+    transition: opacity 0.2s ease;
 }
 
 .sticky-nav-bar__brand:hover {
-    transform: scale(1.03);
-    opacity: 0.8;
+    opacity: 0.75;
 }
 
 .sticky-nav-bar__img {
-    height: 2.5rem;
-    width: 2.5rem;
+    width: 2.4rem;
+    height: 2.4rem;
     border-radius: 30%;
 }
 
 .sticky-nav-bar__name {
     display: flex;
     flex-direction: column;
-    line-height: 1.2;
+    line-height: 1.1;
+    font-size: 1.1rem;
 }
 
 .sticky-nav-bar__name-first {

@@ -1,0 +1,25 @@
+.coming-soon-page {
+    min-height: 55vh;
+    display: grid;
+    place-items: center;
+    padding: 2rem 1rem;
+}
+
+.coming-soon-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
+    text-align: center;
+}
+
+.coming-soon-icon {
+    color: var(--primary-color);
+    line-height: 0;
+}
+
+.coming-soon-title {
+    color: var(--secondary-color);
+    font-size: clamp(1.1rem, 4vw, 1.4rem);
+    font-weight: 400;
+}

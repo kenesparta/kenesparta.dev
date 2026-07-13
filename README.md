@@ -7,7 +7,7 @@ Personal portfolio website built with Leptos (Rust full-stack web framework) and
 - **Frontend/Backend**: [Leptos 0.8.0](https://leptos.dev/) - Full-stack Rust framework with SSR and hydration
 - **Web Server**: [Axum 0.8.0](https://github.com/tokio-rs/axum) - Rust web framework
 - **Compression**: tower-http with Brotli and Gzip support
-- **Styling**: SCSS (compiled via cargo-leptos)
+- **Styling**: plain CSS — `style/parts/*.css` concatenated into `style/main.css` by `make css` (no Sass), minified by cargo-leptos via lightningcss
 - **Testing**: Playwright for end-to-end tests
 - **Infrastructure**: Terraform (AWS App Runner, ECR, Route53, ACM)
 - **CI/CD**: GitHub Actions with AWS OIDC authentication
@@ -31,7 +31,6 @@ Leptos App (Axum + Brotli compression)
 - **Rust nightly**: `rustup toolchain install nightly --allow-downgrade`
 - **WASM target**: `rustup target add wasm32-unknown-unknown`
 - **cargo-leptos**: `cargo install cargo-leptos --locked`
-- **sass**: `npm install -g sass`
 
 ### For Infrastructure Management
 
@@ -133,7 +132,7 @@ make dev/destroy # Destroy resources
 │   │   ├── components/    # Reusable UI components
 │   │   ├── pages/         # Route page components
 │   │   └── constants.rs   # Application constants
-│   ├── style/             # SCSS stylesheets
+│   ├── style/             # parts/*.css (source) → main.css (via make css)
 │   ├── public/            # Static assets
 │   ├── end2end/           # Playwright tests
 │   ├── Cargo.toml         # Rust dependencies
@@ -225,7 +224,7 @@ From `Cargo.toml`:
 - Site root: `target/kdevsite`
 - Site address: `0.0.0.0:3000`
 - Reload port: 3001 (hot-reload)
-- Style file: `style/global.scss`
+- Style file: `style/main.css`
 
 ### Feature Flags
 
