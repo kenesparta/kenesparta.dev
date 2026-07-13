@@ -1,6 +1,6 @@
-use crate::blog::BlogPostSummaryDTO;
-use crate::components::blog::tags::Tags;
-use crate::components::blog::utils::published_date;
+use bc_blog::application::dto::BlogPostSummaryDTO;
+use crate::app::components::blog::tags::Tags;
+use crate::app::components::blog::utils::published_date;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
 use leptos_router::components::A;

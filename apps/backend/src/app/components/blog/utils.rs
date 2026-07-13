@@ -1,4 +1,4 @@
-use crate::blog::PostStatus;
+use bc_blog::domain::model::PostStatus;
 use chrono::{DateTime, Utc};
 
 pub fn published_date(published_at: Option<i64>) -> String {

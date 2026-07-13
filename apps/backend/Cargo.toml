@@ -1,54 +1,57 @@
 [package]
-name = "kenespartadev"
+name = "backend"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[dependencies]
-kenespartadev-core = { path = "../core" }
+[lints.rust]
+unsafe_code = "forbid"
 
-leptos = { version = "0.8.0" }
-leptos_router = { version = "0.8.0" }
-axum = { version = "0.8.0", optional = true }
-console_error_panic_hook = { version = "0.1", optional = true }
-leptos_axum = { version = "0.8.0", optional = true }
-leptos_meta = { version = "0.8.0" }
-tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
-tower-http = { version = "0.6", features = ["compression-full"], optional = true }
-wasm-bindgen = { version = "0.2.104", optional = true }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-chrono = { version = "0.4", features = ["serde"] }
-aws-config = { version = "1.5", optional = true }
-aws-sdk-dynamodb = { version = "1.60", optional = true }
+[dependencies]
+# UI Leptos: compiled to wasm for hydration and native for SSR.
+leptos.workspace = true
+leptos_meta.workspace = true
+leptos_router.workspace = true
+serde.workspace = true
+chrono.workspace = true
+
+# Bounded Context. Its domain is pure data, so it compiles to wasm too and the
+# UI can use its DTOs directly (no view-model duplication). Only the concrete
+# adapters and wiring below are server-only.
+bc-blog = { path = "../../crates/bc-blog" }
+
+# Hydration-only (wasm artifact).
+console_error_panic_hook = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+
+# Server-only (feature `ssr`): runtime, HTTP and the DynamoDB adapter.
+leptos_axum = { workspace = true, optional = true }
+axum = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tower-http = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
+aws-config = { workspace = true, optional = true }
+aws-sdk-dynamodb = { workspace = true, optional = true }
 
 [features]
-hydrate = [
-    "leptos/hydrate",
-    "dep:console_error_panic_hook",
-    "dep:wasm-bindgen",
-]
+default = []
+hydrate = ["leptos/hydrate", "dep:console_error_panic_hook", "dep:wasm-bindgen"]
 ssr = [
-    "dep:axum",
-    "dep:tokio",
-    "dep:leptos_axum",
-    "dep:tower-http",
-    "dep:aws-config",
-    "dep:aws-sdk-dynamodb",
     "leptos/ssr",
     "leptos_meta/ssr",
     "leptos_router/ssr",
+    "dep:leptos_axum",
+    "dep:axum",
+    "dep:tokio",
+    "dep:tower-http",
+    "dep:async-trait",
+    "dep:aws-config",
+    "dep:aws-sdk-dynamodb",
 ]
-
-[profile.wasm-release]
-inherits = "release"
-opt-level = 'z'
-lto = true
-codegen-units = 1
-panic = "abort"
-strip = true
 
 [package.metadata.leptos]
 output-name = "kenespartadev"

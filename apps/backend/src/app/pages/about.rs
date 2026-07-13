@@ -1,4 +1,4 @@
-use crate::components::ComingSoon;
+use crate::app::components::ComingSoon;
 use leptos::prelude::*;
 
 #[component]

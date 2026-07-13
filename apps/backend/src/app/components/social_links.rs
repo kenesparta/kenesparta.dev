@@ -1,4 +1,4 @@
-use crate::constants::BUCKET_URL;
+use crate::app::constants::BUCKET_URL;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
 

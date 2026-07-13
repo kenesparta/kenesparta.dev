@@ -2,13 +2,53 @@
 resolver = "3"
 
 members = [
-    # Main Page Render
-    "frontend",
+    # Shared kernel: truly cross-cutting types.
+    "crates/shared-kernel",
 
-    # Domain
-    "core",
+    # Bounded Contexts (domain + application only, no runtime/IO).
+    "crates/bc-blog",
 
-    # Backend
-    "backend/cli",
-    "backend/api",
+    # Binary: Leptos app + all adapters + wiring.
+    "apps/backend",
 ]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.97"
+license = "MIT"
+
+[workspace.dependencies]
+# UI Leptos: compiled to wasm for hydration and to native for SSR.
+leptos = "0.8.0"
+leptos_meta = "0.8.0"
+leptos_router = "0.8.0"
+leptos_axum = "0.8.0"
+
+# Server-only: runtime, HTTP and the DynamoDB client.
+axum = { version = "0.8.0", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.7.0", features = ["compression-full"] }
+aws-config = "1.5"
+aws-sdk-dynamodb = "1.60"
+
+# Hydration-only (wasm artifact). Pinned to the exact version whose bindgen
+# schema matches the wasm-bindgen CLI bundled with cargo-leptos 0.2.46.
+wasm-bindgen = "=0.2.104"
+console_error_panic_hook = "0.1"
+
+# Cross-cutting — usable from the Bounded Contexts.
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["serde", "v4", "js"] }
+
+# Profile for the hydration wasm artifact (used by cargo-leptos in release).
+[profile.wasm-release]
+inherits = "release"
+opt-level = 'z'
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

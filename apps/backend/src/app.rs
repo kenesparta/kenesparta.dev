@@ -1,8 +1,13 @@
-use crate::components::StickyNavBar;
-use crate::constants::{
+pub mod api;
+pub mod components;
+pub mod constants;
+pub mod pages;
+
+use crate::app::components::StickyNavBar;
+use crate::app::constants::{
     BUCKET_URL, GLOBAL_FONTS, ICON_URL, META_DESCRIPTION, META_TITLE, SITE_URL,
 };
-use crate::pages::{About, BlogList, BlogPost, Experience, HomePage, Projects};
+use crate::app::pages::{About, BlogList, BlogPost, Experience, HomePage, Projects};
 use leptos::prelude::*;
 use leptos_meta::*;
 use leptos_router::hooks::use_location;

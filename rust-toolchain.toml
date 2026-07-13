@@ -1,0 +1,4 @@
+[toolchain]
+channel = "1.97"
+components = ["clippy", "rustfmt", "rust-analyzer"]
+targets = ["wasm32-unknown-unknown"]

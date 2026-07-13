@@ -1,5 +1,5 @@
-use crate::components::{HeaderLinks, SocialLinks};
-use crate::constants::BUCKET_URL;
+use crate::app::components::{HeaderLinks, SocialLinks};
+use crate::app::constants::BUCKET_URL;
 use leptos::prelude::*;
 
 #[component]

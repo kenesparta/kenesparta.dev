@@ -2,8 +2,13 @@ target/
 node_modules/
 .git/
 .gitignore
+.env
+.env.*
 *.md
-frontend/end2end/
+apps/backend/end2end/
+tf/
 .idea/
+.vscode/
+.DS_Store
 Dockerfile*
 docker-compose*

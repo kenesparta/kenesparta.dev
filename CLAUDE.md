@@ -11,27 +11,39 @@ This is a personal portfolio website built with Leptos (Rust full-stack web fram
 - **Web Server**: Axum 0.8.0
 - **Styling**: SCSS (global.scss)
 - **Testing**: Playwright (end-to-end tests)
+- **Architecture**: DDD / hexagonal — a Cargo workspace with a library crate per Bounded Context (`crates/bc-*`), a `shared-kernel`, and a single binary (`apps/backend`) that hosts the Leptos app plus all adapters and wiring
 - **Containerization**: Docker (multi-stage build)
-- **Infrastructure**: Terraform (App Runner, ECR, Route53, DynamoDB)
-- **CI/CD**: GitHub Actions (deploys to AWS ECR/App Runner)
+- **Infrastructure**: Terraform (App Runner, ECR, Route53, DynamoDB) — still present under `tf/`, unchanged
+- **CI/CD**: GitHub Actions (`publish-image.yml`) builds the Docker image and publishes it to GHCR (`ghcr.io/kenesparta/kenespartadev`); it does **not** deploy
 
 ## Repository Structure
 
 ```
 .
-├── site/                  # Main Leptos application
-│   ├── src/
-│   │   ├── app.rs        # Root app component with routing
-│   │   ├── main.rs       # Server entry point
-│   │   ├── lib.rs        # Library entry point
-│   │   ├── components/   # Reusable UI components
-│   │   ├── pages/        # Route page components
-│   │   └── constants.rs  # Application constants
-│   ├── style/            # SCSS stylesheets
-│   ├── public/           # Static assets
-│   ├── end2end/          # Playwright tests
-│   ├── Cargo.toml        # Rust dependencies and Leptos config
-│   └── Dockerfile        # Multi-stage Docker build
+├── Cargo.toml             # [workspace] — edition 2024, rust 1.97, shared deps
+├── rust-toolchain.toml    # pins channel 1.97 + wasm32 target
+├── clippy.toml · rustfmt.toml
+├── crates/
+│   ├── shared-kernel/     # Cross-cutting types: DomainError, Datetime, PostUuid
+│   └── bc-blog/           # Bounded Context: blog (no runtime/IO deps)
+│       └── src/
+│           ├── domain/        # model.rs (BlogPost/Summary/PostStatus), repository.rs (BlogRepository port), errors.rs
+│           └── application/   # use_cases.rs (List/GetBySlug/GetById), dto.rs (BlogPostDTO…)
+├── apps/
+│   └── backend/           # The Leptos app (SSR bin + hydrate lib) + all adapters
+│       ├── src/
+│       │   ├── main.rs · lib.rs           # server + wasm entry points
+│       │   ├── configuration.rs           # env config
+│       │   ├── composition.rs             # DI Container (wires adapters → use cases)
+│       │   ├── http.rs                     # ServerState + server-fn handler
+│       │   ├── persistence/blog_dynamodb.rs   # DynamoBlogRepository (implements the port)
+│       │   └── app/                        # UI: app.rs (routing/shell), components/, pages/, constants.rs, api.rs (server fns)
+│       ├── style/            # SCSS stylesheets
+│       ├── public/           # Static assets
+│       ├── end2end/          # Playwright tests
+│       ├── Cargo.toml        # Leptos config (output-name, site-root, …)
+│       └── ...
+├── Dockerfile             # Multi-stage build (builds from apps/backend)
 ├── tf/                        # Terraform infrastructure
 │   ├── app-runner-ke-dev.tf  # App Runner service and custom domain
 │   ├── iam-*.tf              # IAM roles for GitHub Actions and App Runner
@@ -56,21 +68,27 @@ This is a personal portfolio website built with Leptos (Rust full-stack web fram
 
 **Running the development server:**
 ```bash
-cd site
+cd apps/backend
 cargo leptos watch
 ```
 This starts the dev server with hot-reload at http://0.0.0.0:3000
 
 **Building for production:**
 ```bash
-cd site
+cd apps/backend
 cargo leptos build --release
 ```
-Output: `target/release/kenespartadev` (binary) and `target/kdevsite/` (site assets)
+Output: `target/release/backend` (binary) and `target/kdevsite/` (site assets)
+
+**Type-checking the workspace (fast, no cargo-leptos):**
+```bash
+cargo check -p backend --features ssr                                    # server build
+cargo check -p backend --features hydrate --target wasm32-unknown-unknown # wasm build
+```
 
 **Running end-to-end tests:**
 ```bash
-cd site
+cd apps/backend
 cargo leptos end-to-end          # Debug mode
 cargo leptos end-to-end --release # Release mode
 ```
@@ -79,8 +97,7 @@ cargo leptos end-to-end --release # Release mode
 
 **Building the Docker image:**
 ```bash
-cd site
-docker build -t kenespartadev .
+docker build -t kenespartadev .   # build context is the workspace root
 ```
 
 **Running the container:**
@@ -114,8 +131,11 @@ The application uses Leptos's full-stack architecture with two compilation targe
 - **Server (SSR)**: Compiled with `ssr` feature, runs on Axum server
 - **Client (WASM)**: Compiled with `hydrate` feature, runs in browser
 
+**DDD layering (data flow):**
+UI (`app/pages`, `app/components`) → server functions (`app/api.rs`) → use cases (`bc-blog/application`) via the DI `Container` from Leptos context → `BlogRepository` port → `DynamoBlogRepository` adapter (`persistence/`). The Bounded Context (`crates/bc-blog`) has no runtime/HTTP/AWS dependencies; those live only in `apps/backend`. `bc-blog` is compiled for both wasm and SSR so the UI can use its DTOs directly.
+
 **Routing:**
-Routes are defined in `site/src/app.rs` using leptos_router:
+Routes are defined in `apps/backend/src/app.rs` using leptos_router:
 - `/` → HomePage
 - `/about` → About
 - `/blog` → Blog
@@ -125,24 +145,26 @@ Routes are defined in `site/src/app.rs` using leptos_router:
 The navigation bar (StickyNavBar) is conditionally rendered on all pages except the home page.
 
 **Components:**
-- Components are in `site/src/components/` (header, social links, navigation)
-- Pages are in `site/src/pages/` (individual route handlers)
+- Components are in `apps/backend/src/app/components/` (header, social links, navigation)
+- Pages are in `apps/backend/src/app/pages/` (individual route handlers)
 - Most pages currently show "coming soon" placeholders
 
 **Styling:**
-- Global SCSS is defined in `site/style/global.scss`
+- Global SCSS is defined in `apps/backend/style/global.scss`
 - Leptos config specifies: `style-file = "style/global.scss"`
 - Compiled CSS is served at `/pkg/kenespartadev.css`
 
 ### Docker Deployment
 
-Multi-stage Dockerfile:
-1. **Builder stage**: Uses `rust:1.90`, installs cargo-leptos, builds release binary
-2. **Runtime stage**: Uses distroless image, copies binary + site assets, runs as non-root
+Multi-stage Dockerfile (build context = workspace root):
+1. **Builder stage**: Uses `rust:1.97-bookworm`, installs cargo-leptos, `COPY . .`, runs `cd apps/backend && cargo leptos build --release`
+2. **Runtime stage**: Uses distroless image, copies the `backend` binary + `kdevsite/` site assets, runs as non-root
 
 Environment variables for production:
+- `LEPTOS_OUTPUT_NAME=kenespartadev`
 - `LEPTOS_SITE_ADDR="0.0.0.0:3000"`
-- `LEPTOS_SITE_ROOT=./kdevsite`
+- `LEPTOS_SITE_ROOT=/app/kdevsite`
+- `LEPTOS_SITE_PKG_DIR=pkg`
 - `RUST_LOG="info"`
 
 ### AWS Infrastructure (App Runner)
@@ -187,21 +209,17 @@ The application is deployed on AWS using App Runner with ECR:
 
 ### CI/CD Pipeline
 
-GitHub Actions workflow (`.github/workflows/page.yml`):
-- Triggers on push to `main` or version tags (`v*.*.*`)
-- Builds Docker image and pushes to AWS ECR
-- Triggers App Runner deployment
+GitHub Actions workflow (`.github/workflows/publish-image.yml`):
+- Triggers on push to `main` or version tags (`v*.*.*`) (ignores `**.md` and `tf/**`)
+- Builds the Docker image and pushes it to GHCR: `ghcr.io/kenesparta/kenespartadev:latest` and `:<short sha>`
+- Uses the built-in `GITHUB_TOKEN` (`packages: write`) — no secrets to configure
+- Does **not** deploy. The `tf/` App Runner + ECR infrastructure is untouched; repoint the deploy target at the GHCR image when ready
 
-**GitHub Secrets Required:**
-- `AWS_ROLE_ARN`: IAM role ARN from `tf/iam-main.tf` output
-
-**Workflow Configuration:**
-- ECR Repository: `kenesparta-dev`
-- App Runner Service: `kenesparta-dev`
+**First push:** the GHCR package is created private — make it public (Package settings → Change visibility) if the deploy target must pull it without credentials.
 
 ## Cargo.toml Configuration
 
-Package metadata includes Leptos-specific configuration:
+Leptos package metadata lives in `apps/backend/Cargo.toml`:
 - `output-name = "kenespartadev"`
 - `site-root = "target/kdevsite"`
 - `site-addr = "0.0.0.0:3000"`

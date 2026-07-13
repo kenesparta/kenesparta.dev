@@ -1,5 +1,5 @@
-use crate::blog::get_post_by_slug;
-use crate::components::Article;
+use crate::app::api::get_post_by_slug;
+use crate::app::components::Article;
 use leptos::prelude::*;
 use leptos_router::{components::A, hooks::use_params_map};
 
@@ -9,7 +9,7 @@ pub fn BlogPost() -> impl IntoView {
     let slug = move || params.read().get("slug").unwrap_or_default();
 
     let post_resource = Resource::new(
-        move || slug(),
+        slug,
         |slug| async move { get_post_by_slug(slug).await },
     );
 

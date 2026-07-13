@@ -1,7 +1,7 @@
-use crate::blog::BlogPostDTO;
-use crate::components::blog::tags::Tags;
-use crate::components::blog::utils::published_date;
-use crate::components::go_back::GoBack;
+use bc_blog::application::dto::BlogPostDTO;
+use crate::app::components::blog::tags::Tags;
+use crate::app::components::blog::utils::published_date;
+use crate::app::components::go_back::GoBack;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
 

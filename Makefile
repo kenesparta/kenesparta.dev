@@ -23,4 +23,4 @@ prod/run:
 	docker compose up -d
 
 leptos/build:
-	cargo leptos build --release
+	cd apps/backend && cargo leptos build --release

@@ -1,0 +1,5 @@
+# Minimum supported Rust version. Clippy disables suggestions for later features.
+msrv = "1.97"
+
+# Forbidden variable names (catch forgotten placeholders).
+disallowed-names = ["foo", "bar", "baz", "tmp"]
