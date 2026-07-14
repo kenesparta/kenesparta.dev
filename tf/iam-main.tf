@@ -107,6 +107,30 @@ resource "aws_iam_role_policy" "github_actions_apprunner" {
   })
 }
 
+# Lets the CI trigger a new Lightsail container deployment (re-pull :latest)
+# after publishing to GHCR. Lightsail container-service actions don't support
+# resource-level ARNs, so Resource must be "*".
+resource "aws_iam_role_policy" "github_actions_lightsail" {
+  name = "lightsail-deploy-policy"
+  role = aws_iam_role.github_actions_deploy.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowLightsailContainerDeploy"
+        Effect = "Allow"
+        Action = [
+          "lightsail:GetContainerServices",
+          "lightsail:GetContainerServiceDeployments",
+          "lightsail:CreateContainerServiceDeployment"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role_policy" "github_actions_s3" {
   name = "cdn-bucket-write-policy"
   role = aws_iam_role.github_actions_deploy.id

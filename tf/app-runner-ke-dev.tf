@@ -143,17 +143,9 @@ resource "aws_apprunner_custom_domain_association" "kenesparta" {
   enable_www_subdomain = false
 }
 
-resource "aws_route53_record" "apprunner_main" {
-  zone_id = local.zone_id
-  name    = var.primary_dns
-  type    = "A"
-
-  alias {
-    name                   = aws_apprunner_custom_domain_association.kenesparta.dns_target
-    zone_id                = local.apprunner_hosted_zone_ids[var.region]
-    evaluate_target_health = true
-  }
-}
+# The apex A record moved to cloudfront.tf (aws_route53_record.apex_cloudfront):
+# kenesparta.dev now ALIASes CloudFront -> Lightsail instead of App Runner.
+# See the `moved` block in cloudfront.tf.
 
 # Certificate validation records for App Runner custom domain
 resource "aws_route53_record" "apprunner_cert_validation" {

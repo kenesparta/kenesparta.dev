@@ -58,3 +58,38 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Once the image is on GHCR, tell Lightsail to redeploy (re-pull :latest).
+  # Lightsail doesn't watch the registry, so this step is what makes a push
+  # actually deploy to production.
+  deploy-lightsail:
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC: AssumeRoleWithWebIdentity
+      contents: read
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Trigger Lightsail redeploy (re-pull :latest)
+        env:
+          SERVICE: kenesparta-app
+        run: |
+          set -euo pipefail
+          # Re-submit the CURRENT container spec so Lightsail creates a new
+          # deployment that re-pulls the freshly-pushed :latest image. The env
+          # values (incl. DynamoDB keys) round-trip in the runner's memory and
+          # are never printed (create output is filtered to just the state).
+          spec=$(aws lightsail get-container-service-deployments \
+            --service-name "$SERVICE" --region us-east-1 --output json)
+          containers=$(echo "$spec" | jq -c '.deployments[0].containers')
+          endpoint=$(echo "$spec" | jq -c '.deployments[0].publicEndpoint | {containerName, containerPort, healthCheck}')
+          state=$(aws lightsail create-container-service-deployment \
+            --service-name "$SERVICE" --region us-east-1 \
+            --containers "$containers" --public-endpoint "$endpoint" \
+            --query 'containerService.nextDeployment.state' --output text)
+          echo "Lightsail deployment iniciado: $state"
