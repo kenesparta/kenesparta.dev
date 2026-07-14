@@ -54,58 +54,10 @@ resource "aws_iam_role" "github_actions_deploy" {
   )
 }
 
-resource "aws_iam_role_policy" "github_actions_ecr" {
-  name = "ecr-push-policy"
-  role = aws_iam_role.github_actions_deploy.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AllowECRAuth"
-        Effect = "Allow"
-        Action = [
-          "ecr:GetAuthorizationToken"
-        ]
-        Resource = "*"
-      },
-      {
-        Sid    = "AllowECRImageManagement"
-        Effect = "Allow"
-        Action = [
-          "ecr:BatchCheckLayerAvailability",
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:BatchGetImage",
-          "ecr:PutImage",
-          "ecr:InitiateLayerUpload",
-          "ecr:UploadLayerPart",
-          "ecr:CompleteLayerUpload"
-        ]
-        Resource = "arn:aws:ecr:${var.region}:*:repository/*"
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy" "github_actions_apprunner" {
-  name = "apprunner-deploy-policy"
-  role = aws_iam_role.github_actions_deploy.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AllowAppRunnerDeployment"
-        Effect = "Allow"
-        Action = [
-          "apprunner:StartDeployment",
-          "apprunner:DescribeService"
-        ]
-        Resource = "arn:aws:apprunner:${var.region}:*:service/kenesparta-dev/*"
-      }
-    ]
-  })
-}
+# NOTE: the ECR-push and App Runner-deploy policies were removed when the site
+# moved to GHCR + Lightsail (see github_actions_lightsail below). The role name
+# ("...ecr-ecs-deploy") is kept so the AWS_ROLE_ARN secret / OIDC binding stay
+# valid; renaming it would change the ARN.
 
 # Lets the CI trigger a new Lightsail container deployment (re-pull :latest)
 # after publishing to GHCR. Lightsail container-service actions don't support

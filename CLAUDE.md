@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a personal portfolio website built with Leptos (Rust full-stack web framework) using Axum as the backend server. The site is deployed using Docker to AWS App Runner with infrastructure managed through Terraform.
+This is a personal portfolio website built with Leptos (Rust full-stack web framework) using Axum as the backend server. The site is deployed as a Docker container to AWS Lightsail Containers (fronted by CloudFront), with the image published to GHCR and infrastructure managed through Terraform.
 
 **Tech Stack:**
 - **Frontend/Backend**: Leptos 0.8.0 (full-stack Rust framework with SSR and hydration)
@@ -13,8 +13,8 @@ This is a personal portfolio website built with Leptos (Rust full-stack web fram
 - **Testing**: Playwright (end-to-end tests)
 - **Architecture**: DDD / hexagonal — a Cargo workspace with a library crate per Bounded Context (`crates/bc-*`), a `shared-kernel`, and a single binary (`apps/backend`) that hosts the Leptos app plus all adapters and wiring
 - **Containerization**: Docker (multi-stage build)
-- **Infrastructure**: Terraform (App Runner, ECR, Route53, DynamoDB) — still present under `tf/`, unchanged
-- **CI/CD**: GitHub Actions (`publish-image.yml`) builds the Docker image and publishes it to GHCR (`ghcr.io/kenesparta/kenespartadev`); it does **not** deploy
+- **Infrastructure**: Terraform (Lightsail Containers, CloudFront, Route53, ACM, DynamoDB) under `tf/`
+- **CI/CD**: GitHub Actions (`publish-image.yml`) builds the Docker image, publishes it to GHCR (`ghcr.io/kenesparta/kenespartadev`), and triggers a Lightsail redeploy
 
 ## Repository Structure
 
@@ -45,11 +45,11 @@ This is a personal portfolio website built with Leptos (Rust full-stack web fram
 │       └── ...
 ├── Dockerfile             # Multi-stage build (builds from apps/backend)
 ├── tf/                        # Terraform infrastructure
-│   ├── app-runner-ke-dev.tf  # App Runner service and custom domain
-│   ├── iam-*.tf              # IAM roles for GitHub Actions and App Runner
+│   ├── lightsail.tf          # Lightsail Container Service (pulls GHCR) + DynamoDB IAM user
+│   ├── cloudfront.tf         # CloudFront (fronts the apex) + apex ALIAS record
+│   ├── iam-main.tf           # GitHub Actions OIDC role (GHCR build + Lightsail deploy)
 │   ├── dns-*.tf              # Route53 zones and records
-│   ├── acm.tf                # ACM certificate for SSL/TLS
-│   ├── ecr.tf                # ECR repository configuration
+│   ├── acm.tf                # ACM certificate (used by CloudFront)
 │   └── dynamodb.tf           # DynamoDB table for blog posts
 ├── .github/workflows/    # CI/CD pipelines
 └── Makefile              # Build shortcuts
@@ -166,55 +166,43 @@ Environment variables for production:
 - `LEPTOS_SITE_PKG_DIR=pkg`
 - `RUST_LOG="info"`
 
-### AWS Infrastructure (App Runner)
+### AWS Infrastructure (Lightsail + CloudFront)
 
-The application is deployed on AWS using App Runner with ECR:
+The site runs on a Lightsail Container Service fronted by CloudFront. Request
+path: `kenesparta.dev` (Route53 apex ALIAS) → CloudFront (ACM cert, HTTPS) →
+Lightsail Container Service → container.
 
-**App Runner Service:**
-- Service name: `kenesparta-dev`
-- Resources: 256 CPU units, 512 MB memory
-- Port: 3000
-- Health checks: HTTP on path `/`
-- Auto-scaling: Managed by App Runner
-- HTTPS: Automatic TLS termination
-- Custom domain: `kenesparta.dev` with automatic certificate validation
+**Lightsail Container Service** (`tf/lightsail.tf`):
+- Name `kenesparta-app`, power `nano` (0.25 vCPU / 512 MB, ~$7/mo), scale 1
+- Pulls the **public** image `ghcr.io/kenesparta/kenespartadev:latest` directly (Lightsail can use third-party registries; App Runner could not — that's why the site was migrated)
+- Health check: HTTP on `/`
+- DynamoDB access: Lightsail gives containers no IAM role, so a dedicated IAM user (`kenesparta-lightsail-app`, scoped to the blog table) supplies `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` via env vars — **temporary** until the blog moves to Postgres
 
-**ECR (Elastic Container Registry):**
-- Repository: `kenesparta-dev`
-- Lifecycle policy: Keeps only the latest image
-- Image scanning enabled on push
+**CloudFront** (`tf/cloudfront.tf`):
+- Fronts the apex because Route53 cannot ALIAS directly to a Lightsail container service
+- Origin = the Lightsail service domain (HTTPS-only); reuses the existing ACM cert
+- Pure pass-through (Managed-CachingDisabled + AllViewerExceptHostHeader) so SSR responses stay fresh
+- `aws_route53_record.apex_cloudfront`: apex ALIAS → CloudFront
 
-**IAM Roles:**
-- GitHub Actions OIDC role: For pushing images to ECR and triggering deployments
-- App Runner access role: For pulling images from ECR
-- App Runner instance role: For DynamoDB access at runtime
+**Images:** published to **GHCR** (`ghcr.io/kenesparta/kenespartadev`), public. No ECR.
 
-**DNS:**
-- `kenesparta.dev` A record points to App Runner service using Route53 alias
-- SSL/TLS certificate via ACM with automatic DNS validation
+**IAM** (`tf/iam-main.tf`):
+- GitHub Actions OIDC role (`github-actions-ecr-ecs-deploy` — legacy name, kept so `AWS_ROLE_ARN` stays valid): the deploy job assumes it to trigger a Lightsail redeploy (`lightsail-deploy-policy`)
+- IAM user `kenesparta-lightsail-app`: DynamoDB access for the container
 
-**DynamoDB:**
-- Table: `kenesparta-blog-posts`
-- Billing: Pay-per-request (on-demand)
-- Global secondary index on status + created_at
-- Point-in-time recovery enabled
-- Server-side encryption enabled
+**DNS:** apex ALIAS → CloudFront; ACM cert (`kenesparta.dev` + `*.kenesparta.dev`) via DNS validation.
 
-**Cost Optimization:**
-- App Runner with minimal resources (256 CPU / 512 MB)
-- Pay-per-use model (scales to zero when idle)
-- No ALB, NAT Gateway, or VPC required
-- Simplified infrastructure reduces operational overhead
+**DynamoDB:** table `kenesparta-blog-posts`, pay-per-request, GSI on status + created_at, PITR + SSE enabled.
+
+**Cost:** ~$7/mo fixed (Lightsail nano) + CloudFront pay-per-use. No ECR, no App Runner.
 
 ### CI/CD Pipeline
 
-GitHub Actions workflow (`.github/workflows/publish-image.yml`):
-- Triggers on push to `main` or version tags (`v*.*.*`) (ignores `**.md` and `tf/**`)
-- Builds the Docker image and pushes it to GHCR: `ghcr.io/kenesparta/kenespartadev:latest` and `:<short sha>`
-- Uses the built-in `GITHUB_TOKEN` (`packages: write`) — no secrets to configure
-- Does **not** deploy. The `tf/` App Runner + ECR infrastructure is untouched; repoint the deploy target at the GHCR image when ready
+GitHub Actions workflow (`.github/workflows/publish-image.yml`), on version tags (`v*.*.*`) or `workflow_dispatch`:
+1. **`build-and-publish`**: builds the Docker image and pushes it to GHCR (`:latest` + `:<short sha>`) with `GITHUB_TOKEN` (`packages: write`).
+2. **`deploy-lightsail`**: assumes the OIDC role (`AWS_ROLE_ARN`), reads the current Lightsail deployment spec and re-submits it so Lightsail re-pulls the new `:latest` (Lightsail doesn't watch the registry — this step is what makes a push deploy). Env values round-trip in the runner and are never printed.
 
-**First push:** the GHCR package is created private — make it public (Package settings → Change visibility) if the deploy target must pull it without credentials.
+**Required:** the `AWS_ROLE_ARN` secret must be the OIDC role ARN. The GHCR package must be **public** so Lightsail/CloudFront can pull it.
 
 ## Cargo.toml Configuration
 
