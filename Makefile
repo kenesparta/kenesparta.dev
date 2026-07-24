@@ -1,5 +1,5 @@
 .PHONY: dev/up dev/down dev/build dev/restart dev/logs dev/shell dev/clean css leptos/build \
-        secrets secrets-prod secrets-view secrets-rotate blog/ingest blog/publish
+        secrets secrets-prod secrets-view secrets-rotate blog/ingest blog/publish cdn/upload
 
 STYLE_DIR := apps/backend/style
 
@@ -61,9 +61,25 @@ secrets-rotate:
 	@sops updatekeys secrets/dev.enc.env secrets/prod.enc.env
 
 ## blog/ingest:   renderiza content/posts/*.md y hace upsert en la BD (ENV=dev|prod)
+##                PRUNE=1 borra además los posts de la BD sin archivo .md (espejo exacto)
 blog/ingest:
-	sops exec-env $(SECRETS) 'cargo run -p backend --no-default-features --features ingest --bin ingest -- content/posts'
+	sops exec-env $(SECRETS) 'cargo run -p backend --no-default-features --features ingest --bin ingest -- content/posts $(if $(PRUNE),--prune)'
 
 ## blog/publish:  publica los posts en PRODUCCIÓN
 blog/publish:
 	$(MAKE) blog/ingest ENV=prod
+
+# CDN: bucket S3 privado servido por CloudFront (tf/static-cdn.tf).
+# El perfil AWS SSO sale de tf/.env (el mismo que usa Terraform).
+-include tf/.env
+CDN_BUCKET := cdn.kenesparta.dev
+KEY ?= $(notdir $(FILE))
+
+## cdn/upload:    sube un archivo al CDN y muestra su URL pública
+##                FILE=<archivo local>  KEY=<ruta destino> (default: nombre del archivo)
+##                ej: make cdn/upload FILE=arch.webp KEY=blog/mi-post/arch.webp
+cdn/upload:
+	@test -n "$(FILE)" || { echo 'usage: make cdn/upload FILE=<local-file> [KEY=<cdn-path>]'; exit 1; }
+	@test -n "$(TF_VAR_aws_sso_profile)" || { echo 'TF_VAR_aws_sso_profile no definido: crea tf/.env (ver tf/Makefile)'; exit 1; }
+	aws s3 cp "$(FILE)" "s3://$(CDN_BUCKET)/$(KEY)" --profile "$(TF_VAR_aws_sso_profile)"
+	@echo "https://$(CDN_BUCKET)/$(KEY)"

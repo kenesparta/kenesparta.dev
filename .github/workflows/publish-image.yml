@@ -1,95 +1,102 @@
+# On every vX.Y.Z tag: (1) `build-push` publishes the backend image to the
+# private ECR repo and (2) `deploy` rolls it out on Lightsail with a
+# `terraform apply` scoped (-target) to the deployment resource — it never
+# touches CloudFront/Route53/ACM/IAM. Both jobs assume the CI role via OIDC
+# (secret AWS_ROLE_ARN).
+#
+# Repo secrets (Settings → Secrets and variables → Actions):
+#   AWS_ROLE_ARN = OIDC role ARN (terraform: aws_iam_role.github_actions_deploy)
+#   SOPS_AGE_KEY = the age private key (AGE-SECRET-KEY-…, the line in
+#                  ~/.config/sops/age/keys.txt) so the sops provider can
+#                  decrypt secrets/prod.enc.env during the apply.
+#
+# Publish a version:  git tag v1.0.0 && git push origin v1.0.0
+
 name: publish-image
 
 on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
-    paths-ignore:
-      - "**.md"
-      - "tf/**"
-  workflow_dispatch:
 
-# If two pushes land in a row, the older build is no longer interesting.
+# Deploys share Terraform state: never run two rollouts at once, and don't
+# cancel one mid-apply.
 concurrency:
   group: publish-image
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
+  id-token: write # OIDC: AssumeRoleWithWebIdentity
   contents: read
-  packages: write
 
 env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/kenespartadev
+  AWS_REGION: us-east-1 # ECR + Terraform state region (must match var.region)
+  REPO: kenespartadev # = aws_ecr_repository.app.name
 
 jobs:
-  build-and-publish:
+  build-push:
     runs-on: ubuntu-latest
     # The Rust + Leptos build (SSR + wasm) is slow on the standard runner.
     timeout-minutes: 90
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Short SHA for the tag
-        id: sha
-        run: echo "short=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set up buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and publish
+      - name: Build and push to ECR
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
           push: true
           tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ steps.sha.outputs.short }}
-          # Links the package to this repository on GitHub.
-          labels: |
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            ${{ steps.ecr.outputs.registry }}/${{ env.REPO }}:${{ github.ref_name }}
+            ${{ steps.ecr.outputs.registry }}/${{ env.REPO }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Once the image is on GHCR, tell Lightsail to redeploy (re-pull :latest).
-  # Lightsail doesn't watch the registry, so this step is what makes a push
-  # actually deploy to production.
-  deploy-lightsail:
-    needs: build-and-publish
+  # Lightsail rollout: terraform apply scoped to the deployment resource. The
+  # container env (incl. DATABASE_URL) comes from secrets/prod.enc.env via the
+  # sops provider — Terraform stays the single source of truth.
+  deploy:
+    needs: build-push
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write # OIDC: AssumeRoleWithWebIdentity
-      contents: read
     steps:
+      - uses: actions/checkout@v7
+
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Trigger Lightsail redeploy (re-pull :latest)
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8" # same as local, avoids state format drift
+          terraform_wrapper: false
+
+      - name: Lightsail rollout
+        working-directory: tf
         env:
-          SERVICE: kenesparta-app
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }} # decrypts secrets/prod.enc.env
+          TF_VAR_image_version: ${{ github.ref_name }} # the tag: vX.Y.Z
         run: |
-          set -euo pipefail
-          # Re-submit the CURRENT container spec so Lightsail creates a new
-          # deployment that re-pulls the freshly-pushed :latest image. The env
-          # values (incl. DATABASE_URL, set by Terraform) round-trip in the
-          # runner's memory and are never printed (output is just the state).
-          spec=$(aws lightsail get-container-service-deployments \
-            --service-name "$SERVICE" --region us-east-1 --output json)
-          containers=$(echo "$spec" | jq -c '.deployments[0].containers')
-          endpoint=$(echo "$spec" | jq -c '.deployments[0].publicEndpoint | {containerName, containerPort, healthCheck}')
-          state=$(aws lightsail create-container-service-deployment \
-            --service-name "$SERVICE" --region us-east-1 \
-            --containers "$containers" --public-endpoint "$endpoint" \
-            --query 'containerService.nextDeployment.state' --output text)
-          echo "Lightsail deployment started: $state"
+          terraform init -input=false \
+            -backend-config="bucket=tf.kenesparta.dev" \
+            -backend-config="key=dns/prod/kenesparta.dev" \
+            -backend-config="region=${AWS_REGION}"
+          terraform apply -auto-approve -input=false \
+            -target=aws_lightsail_container_service_deployment_version.app
+          echo "::notice title=Lightsail rollout::deployed ${TF_VAR_image_version}"

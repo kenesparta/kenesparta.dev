@@ -141,3 +141,26 @@ impl UpsertPost {
         Ok(self.repository.upsert(&post).await?)
     }
 }
+
+/// Delete posts whose source file no longer exists (the ingest `--prune`
+/// write path): the database mirrors the content directory.
+pub struct PrunePosts {
+    repository: Arc<dyn BlogRepository>,
+}
+
+impl PrunePosts {
+    pub fn new(repository: Arc<dyn BlogRepository>) -> Self {
+        Self { repository }
+    }
+
+    /// Deletes every stored post whose slug is not in `keep`; returns the
+    /// deleted slugs. An empty `keep` deletes ALL posts — the caller decides
+    /// whether that is intentional.
+    ///
+    /// # Errors
+    ///
+    /// [`UseCaseError::Repository`] if the persistence port fails.
+    pub async fn execute(&self, keep: &[String]) -> Result<Vec<String>, UseCaseError> {
+        Ok(self.repository.delete_not_in(keep).await?)
+    }
+}

@@ -12,7 +12,7 @@ Personal portfolio website built with Leptos (Rust full-stack web framework), de
 - **Database**: PostgreSQL (Lightsail managed database) via SQLx — blog posts authored as Markdown in `content/posts/`
 - **Secrets**: [sops](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age) — encrypted dotenv files committed under `secrets/`
 - **Infrastructure**: Terraform (AWS Lightsail Containers, CloudFront, Route53, ACM)
-- **CI/CD**: GitHub Actions — publishes the image to GHCR, then triggers a Lightsail redeploy (AWS OIDC)
+- **CI/CD**: GitHub Actions — publishes the image to a private ECR repo, then rolls it out on Lightsail with `terraform apply -target` (AWS OIDC)
 
 ## Architecture
 
@@ -23,7 +23,7 @@ Route53 (kenesparta.dev apex ALIAS)
    ↓
 CloudFront (HTTPS, ACM cert)
    ↓
-Lightsail Container Service  ←  image: ghcr.io/kenesparta/kenespartadev
+Lightsail Container Service  ←  image: private ECR repo `kenespartadev`
    ↓
 Leptos App (Axum + Brotli)   →  Lightsail PostgreSQL (blog)
 ```
@@ -228,9 +228,10 @@ make dev/destroy # Destroy resources
 ├── .sops.yaml             # sops creation rules (age recipients)
 ├── Dockerfile             # Multi-stage build (builds from apps/backend)
 ├── tf/                        # Terraform infrastructure
-│   ├── lightsail.tf          # Lightsail Container Service (pulls GHCR) + sops secrets
+│   ├── lightsail.tf          # Lightsail Container Service (pulls private ECR) + sops secrets
+│   ├── ecr.tf                # Private ECR repo + lifecycle + Lightsail pull policy
 │   ├── cloudfront.tf         # CloudFront (fronts the apex) + apex ALIAS record
-│   ├── iam-main.tf           # GitHub Actions OIDC role (GHCR build + Lightsail deploy)
+│   ├── iam-main.tf           # GitHub Actions OIDC role (ECR push + TF state + Lightsail deploy)
 │   ├── dns-*.tf              # Route53 zones and records
 │   └── acm.tf                # ACM certificate (used by CloudFront)
 ├── .github/workflows/     # CI/CD pipelines
@@ -241,17 +242,17 @@ make dev/destroy # Destroy resources
 
 ### Compute (Lightsail + CloudFront)
 - **Lightsail Container Service**: `kenesparta-app`, power `nano` (0.25 vCPU / 512 MB, ~$7/mo)
-- **Image**: pulls `ghcr.io/kenesparta/kenespartadev:latest` (public) directly from GHCR
+- **Image**: pulls the private ECR image through the service's ECR image-puller role (`private_registry_access`)
 - **Health Checks**: HTTP on path `/`
 - **CloudFront**: fronts the apex (Route53 can't ALIAS to Lightsail); HTTPS via ACM; pure pass-through
 
 ### Container Registry
-- **GHCR**: `ghcr.io/kenesparta/kenespartadev` (public). No ECR.
+- **ECR**: private repo `kenespartadev` — tags `vX.Y.Z` + `latest`, scan-on-push, lifecycle keeps the last 10 images
 
 ### Security
 - **IAM Roles**: OIDC federation for GitHub Actions (no long-lived credentials)
-- **Lightsail deploy**: the OIDC role triggers a Lightsail redeploy after the image is on GHCR
-- **Secrets**: sops/age-encrypted in the repo; decrypted only locally (Terraform) — the age key never leaves your machine
+- **Lightsail deploy**: the OIDC role runs a `terraform apply` scoped to the deployment resource after pushing to ECR
+- **Secrets**: sops/age-encrypted in the repo; decrypted by Terraform locally (`SOPS_AGE_KEY_FILE`) and in CI (`SOPS_AGE_KEY` repo secret)
 - **SSL/TLS**: ACM certificate for `kenesparta.dev` + `*.kenesparta.dev` (used by CloudFront); `DATABASE_URL` uses `sslmode=require`
 
 ### DNS
@@ -265,13 +266,16 @@ make dev/destroy # Destroy resources
 
 ## CI/CD Pipeline
 
-GitHub Actions (`publish-image.yml`) on version tags (`v*.*.*`) or manual dispatch:
-1. Builds the Docker image and pushes it to GHCR (`:latest` + `:<short sha>`)
-2. Triggers a Lightsail redeploy so the container re-pulls the new `:latest`
+GitHub Actions (`publish-image.yml`) on version tags (`vX.Y.Z`):
+1. **`build-push`**: builds the Docker image and pushes it to the private ECR repo (`:vX.Y.Z` + `:latest`)
+2. **`deploy`**: rolls it out on Lightsail with `terraform apply -auto-approve -target` of the deployment resource (`TF_VAR_image_version=<tag>`); the sops provider decrypts `secrets/prod.enc.env` in the runner
+
+The same rollout can be run locally: `cd tf && make rollout VERSION=vX.Y.Z`.
 
 ### Required Secrets
 
-- `AWS_ROLE_ARN`: OIDC role ARN for GitHub Actions (used by the Lightsail deploy job)
+- `AWS_ROLE_ARN`: OIDC role ARN for GitHub Actions (both jobs)
+- `SOPS_AGE_KEY`: the age private key (`AGE-SECRET-KEY-…` line from `~/.config/sops/age/keys.txt`), used by the deploy job to decrypt `secrets/prod.enc.env`
 
 ## Routes
 
@@ -318,7 +322,7 @@ From `Cargo.toml`:
 ### Cost Optimization
 
 - Lightsail Container Service `nano` (~$7/mo fixed) + CloudFront pay-per-use
-- Image on GHCR (free public registry) — no ECR
+- Private ECR repo with a lifecycle policy (last 10 images, ~$0.10/GB/mo)
 - No ALB, NAT Gateway, or VPC required
 - Simplified infrastructure, minimal operational overhead
 

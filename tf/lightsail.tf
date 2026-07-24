@@ -1,14 +1,22 @@
 # ── Lightsail Container Service ──────────────────────────────────────────────
-# Runs the site container pulled directly from the PUBLIC GHCR image
-# (ghcr.io/kenesparta/kenespartadev). Unlike App Runner, Lightsail can pull from
-# a third-party registry. The blog data lives in a Lightsail managed Postgres
-# database (created outside Terraform); the app reaches it via DATABASE_URL.
+# Runs the site container pulled from the PRIVATE ECR repo (ecr.tf) through the
+# service's ECR image-puller role. The blog data lives in a Lightsail managed
+# Postgres database (created outside Terraform); the app reaches it via
+# DATABASE_URL.
 
 resource "aws_lightsail_container_service" "app" {
   name        = "kenesparta-app"
   power       = "nano" # 0.25 vCPU / 512 MB, ~$7/mo
   scale       = 1
   is_disabled = false
+
+  # ECR image-puller role: lets the service pull the private image
+  # (aws_ecr_repository_policy.lightsail_pull grants it on the repo side).
+  private_registry_access {
+    ecr_image_puller_role {
+      is_active = true
+    }
+  }
 
   tags = merge(
     local.common_tags,
@@ -33,7 +41,9 @@ resource "aws_lightsail_container_service_deployment_version" "app" {
 
   container {
     container_name = "app"
-    image          = "ghcr.io/kenesparta/kenespartadev:latest"
+    # CI rollout: terraform apply -target of this resource with
+    # TF_VAR_image_version=vX.Y.Z (publish-image.yml / `make rollout`).
+    image = "${aws_ecr_repository.app.repository_url}:${var.image_version}"
 
     ports = {
       "3000" = "HTTP"

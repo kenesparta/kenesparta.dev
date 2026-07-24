@@ -26,3 +26,11 @@ dev/apply: dev/plan
 
 dev/destroy: dev/init
 	@terraform destroy
+
+# Rollout manual: despliega una versión YA publicada en ECR, sin tocar el
+# resto de la infra (mismo apply acotado que hace el CI).
+rollout: dev/init
+	@test -n "$(VERSION)" || { echo "usage: make rollout VERSION=vX.Y.Z"; exit 1; }
+	@terraform apply -auto-approve -input=false \
+		-var="image_version=$(VERSION)" \
+		-target=aws_lightsail_container_service_deployment_version.app

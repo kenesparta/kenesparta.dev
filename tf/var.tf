@@ -1,6 +1,13 @@
 variable "aws_sso_profile" {
-  description = "(string) global project name"
+  description = "AWS SSO profile for local runs (tf/.env). Empty in CI, where credentials come from the OIDC role via env vars."
   type        = string
+  default     = ""
+}
+
+variable "image_version" {
+  description = "Tag of the backend image in ECR to deploy (git tag vX.Y.Z). CI sets TF_VAR_image_version; a full local apply defaults to `latest`."
+  type        = string
+  default     = "latest"
 }
 
 variable "region" {

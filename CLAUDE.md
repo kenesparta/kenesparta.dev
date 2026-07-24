@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a personal portfolio website built with Leptos (Rust full-stack web framework) using Axum as the backend server. The site is deployed as a Docker container to AWS Lightsail Containers (fronted by CloudFront), with the image published to GHCR and infrastructure managed through Terraform. Blog posts are Markdown files in `content/posts/` ingested into a Lightsail managed PostgreSQL database.
+This is a personal portfolio website built with Leptos (Rust full-stack web framework) using Axum as the backend server. The site is deployed as a Docker container to AWS Lightsail Containers (fronted by CloudFront), with the image published to a private Amazon ECR repository and infrastructure managed through Terraform. Blog posts are Markdown files in `content/posts/` ingested into a Lightsail managed PostgreSQL database.
 
 **Tech Stack:**
 - **Frontend/Backend**: Leptos 0.8.0 (full-stack Rust framework with SSR and hydration)
@@ -16,7 +16,7 @@ This is a personal portfolio website built with Leptos (Rust full-stack web fram
 - **Secrets**: sops + age — `secrets/{dev,prod}.enc.env` (dotenv, committed encrypted), recipients in `.sops.yaml`, age key at `~/.config/sops/age/keys.txt` (`SOPS_AGE_KEY_FILE` exported by the Makefiles)
 - **Containerization**: Docker (multi-stage build)
 - **Infrastructure**: Terraform (Lightsail Containers, CloudFront, Route53, ACM) under `tf/`
-- **CI/CD**: GitHub Actions (`publish-image.yml`) builds the Docker image, publishes it to GHCR (`ghcr.io/kenesparta/kenespartadev`), and triggers a Lightsail redeploy
+- **CI/CD**: GitHub Actions (`publish-image.yml`) builds the Docker image, publishes it to the private ECR repo (`kenespartadev`), and rolls it out on Lightsail with `terraform apply -target` (sops provider + `SOPS_AGE_KEY` secret)
 
 ## Repository Structure
 
@@ -53,9 +53,10 @@ This is a personal portfolio website built with Leptos (Rust full-stack web fram
 │       └── ...
 ├── Dockerfile             # Multi-stage build (builds from apps/backend)
 ├── tf/                        # Terraform infrastructure
-│   ├── lightsail.tf          # Lightsail Container Service (pulls GHCR) + sops_file data source
+│   ├── lightsail.tf          # Lightsail Container Service (pulls private ECR) + sops_file data source
+│   ├── ecr.tf                # Private ECR repo + lifecycle + Lightsail pull policy
 │   ├── cloudfront.tf         # CloudFront (fronts the apex) + apex ALIAS record
-│   ├── iam-main.tf           # GitHub Actions OIDC role (GHCR build + Lightsail deploy)
+│   ├── iam-main.tf           # GitHub Actions OIDC role (ECR push + TF state + Lightsail deploy)
 │   ├── dns-*.tf              # Route53 zones and records
 │   └── acm.tf                # ACM certificate (used by CloudFront)
 ├── .github/workflows/    # CI/CD pipelines
@@ -102,6 +103,8 @@ Posts use TOML frontmatter between `+++` fences (title, summary, date RFC 3339,
 optional slug/author/tags/status; status defaults to "draft"). The ingest CLI
 (`apps/backend/src/bin/ingest.rs`, feature `ingest`) renders markdown with
 pulldown-cmark and upserts by slug — idempotent, `post_id`/`created_at` preserved.
+Deleting a `.md` file does NOT delete its DB row; pass `PRUNE=1` (→ `--prune`)
+to also delete DB posts with no matching file, making the DB mirror `content/posts/`.
 
 **Building for production:**
 ```bash
@@ -206,7 +209,7 @@ Lightsail Container Service → container.
 
 **Lightsail Container Service** (`tf/lightsail.tf`):
 - Name `kenesparta-app`, power `nano` (0.25 vCPU / 512 MB, ~$7/mo), scale 1
-- Pulls the **public** image `ghcr.io/kenesparta/kenespartadev:latest` directly (Lightsail can use third-party registries; App Runner could not — that's why the site was migrated)
+- Pulls the **private** ECR image (`tf/ecr.tf`, repo `kenespartadev`) through the service's ECR image-puller role (`private_registry_access`); the repo policy grants that principal pull access
 - Health check: HTTP on `/`
 - Database access: `DATABASE_URL` env var, decrypted from `secrets/prod.enc.env` by the carlpett/sops Terraform provider at plan/apply time (needs `SOPS_AGE_KEY_FILE`; exported by `tf/Makefile`). The decrypted value lands in the TF state in S3 (encrypted bucket).
 
@@ -216,24 +219,24 @@ Lightsail Container Service → container.
 - Pure pass-through (Managed-CachingDisabled + AllViewerExceptHostHeader) so SSR responses stay fresh
 - `aws_route53_record.apex_cloudfront`: apex ALIAS → CloudFront
 
-**Images:** published to **GHCR** (`ghcr.io/kenesparta/kenespartadev`), public. No ECR.
+**Images:** private **ECR** repo `kenespartadev` (`tf/ecr.tf`): tags `vX.Y.Z` + `latest`, scan-on-push, lifecycle policy keeps the last 10 images. GHCR is no longer used.
 
 **IAM** (`tf/iam-main.tf`):
-- GitHub Actions OIDC role (`github-actions-ecr-ecs-deploy` — legacy name, kept so `AWS_ROLE_ARN` stays valid): the deploy job assumes it to trigger a Lightsail redeploy (`lightsail-deploy-policy`)
+- GitHub Actions OIDC role (`github-actions-ecr-ecs-deploy` — name kept so `AWS_ROLE_ARN` stays valid): `ecr-push-policy` (push to the app repo), `tf-state-policy` (read/write only this stack's state object in S3), `lightsail-deploy-policy` (create/read deployments)
 
 **DNS:** apex ALIAS → CloudFront; ACM cert (`kenesparta.dev` + `*.kenesparta.dev`) via DNS validation.
 
 **Database:** Lightsail managed PostgreSQL, created manually in the console (NOT in Terraform). Endpoint/credentials live only in `secrets/prod.enc.env`. With public mode off, only Lightsail resources in the region can connect — toggle `--publicly-accessible` around `make blog/publish` runs from a laptop. Schema is owned by the SQLx migrations (run at app startup and by the ingest CLI); migration files are checksummed — never edit an applied one, add a new file.
 
-**Cost:** ~$7/mo fixed (Lightsail nano) + managed DB + CloudFront pay-per-use. No ECR, no App Runner, no DynamoDB.
+**Cost:** ~$7/mo fixed (Lightsail nano) + managed DB + CloudFront pay-per-use + ECR storage (last 10 images, ~$0.10/GB/mo). No App Runner, no DynamoDB.
 
 ### CI/CD Pipeline
 
-GitHub Actions workflow (`.github/workflows/publish-image.yml`), on version tags (`v*.*.*`) or `workflow_dispatch`:
-1. **`build-and-publish`**: builds the Docker image and pushes it to GHCR (`:latest` + `:<short sha>`) with `GITHUB_TOKEN` (`packages: write`).
-2. **`deploy-lightsail`**: assumes the OIDC role (`AWS_ROLE_ARN`), reads the current Lightsail deployment spec and re-submits it so Lightsail re-pulls the new `:latest` (Lightsail doesn't watch the registry — this step is what makes a push deploy). Env values (incl. `DATABASE_URL`, set once by Terraform) round-trip in the runner and are never printed — CI never needs the age key.
+GitHub Actions workflow (`.github/workflows/publish-image.yml`), on version tags (`vX.Y.Z`), both jobs assume the OIDC role (`AWS_ROLE_ARN`):
+1. **`build-push`**: builds the Docker image and pushes it to the private ECR repo (`:vX.Y.Z` + `:latest`).
+2. **`deploy`**: runs `terraform apply -auto-approve -target=aws_lightsail_container_service_deployment_version.app` with `TF_VAR_image_version=<tag>` — Terraform is the single source of truth for the deployment (image + env). The sops provider decrypts `secrets/prod.enc.env` in the runner via the `SOPS_AGE_KEY` repo secret. The same rollout can be run locally: `cd tf && make rollout VERSION=vX.Y.Z`.
 
-**Required:** the `AWS_ROLE_ARN` secret must be the OIDC role ARN. The GHCR package must be **public** so Lightsail/CloudFront can pull it.
+**Required repo secrets:** `AWS_ROLE_ARN` (OIDC role ARN) and `SOPS_AGE_KEY` (the age private key line from `~/.config/sops/age/keys.txt`).
 
 ## Cargo.toml Configuration
 

@@ -23,6 +23,11 @@ pub trait BlogRepository: Send + Sync {
     /// update it in place, preserving the stored `post_id` and `created_at`
     /// (stable ids and URLs across re-ingests).
     async fn upsert(&self, post: &BlogPost) -> Result<(), RepositoryError>;
+
+    /// Delete every post whose slug is NOT in `keep`; returns the deleted
+    /// slugs. An empty `keep` deletes ALL posts — callers must guard against
+    /// passing an empty list by accident.
+    async fn delete_not_in(&self, keep: &[String]) -> Result<Vec<String>, RepositoryError>;
 }
 
 #[derive(Debug, Error)]
