@@ -48,3 +48,15 @@
 .sticky-nav-bar__name-last {
     color: var(--secondary-color);
 }
+
+/* Mobile: stack and center — brand (icon + name) on top, links row centered
+   below. Four short links need no hamburger. */
+@media (max-width: 640px) {
+    .sticky-nav-bar {
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        padding: 0.5rem 0.75rem;
+    }
+}

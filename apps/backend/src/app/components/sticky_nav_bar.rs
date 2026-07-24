@@ -1,14 +1,14 @@
 use crate::app::components::HeaderLinks;
 use crate::app::constants::BUCKET_URL;
 use leptos::prelude::*;
-use leptos::{component, view, IntoView};
+use leptos::{IntoView, component, view};
 
 #[component]
 pub fn StickyNavBar() -> impl IntoView {
     let img_url = format!("{}/img/icon.svg", BUCKET_URL);
     view! {
         <nav class="sticky-nav-bar">
-            <a href="/" class="sticky-nav-bar__brand">
+            <a href="/" class="sticky-nav-bar__brand" aria-label="Ken Esparta — home">
                 <img src={img_url} alt="" class="sticky-nav-bar__img"/>
                 <div class="sticky-nav-bar__name">
                     <span class="delius-swash-caps sticky-nav-bar__name-first">"Ken"</span>

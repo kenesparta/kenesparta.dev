@@ -8,11 +8,6 @@ pub fn BlogList() -> impl IntoView {
 
     view! {
         <div class="blog-container">
-            <header class="blog-header">
-                <h1>"Blog"</h1>
-                <p>"Thoughts on software engineering, Rust, and technology"</p>
-            </header>
-
             <Suspense fallback=move || {
                 view! { <div class="loading">"Loading posts..."</div> }
             }>

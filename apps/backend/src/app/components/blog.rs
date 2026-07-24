@@ -5,3 +5,4 @@ mod utils;
 
 pub use article::*;
 pub use card::*;
+pub use tags::*;

@@ -1,17 +1,14 @@
 use crate::app::api::get_post_by_slug;
-use crate::app::components::Article;
+use crate::app::components::{Article, GoBack};
 use leptos::prelude::*;
-use leptos_router::{components::A, hooks::use_params_map};
+use leptos_router::hooks::use_params_map;
 
 #[component]
 pub fn BlogPost() -> impl IntoView {
     let params = use_params_map();
     let slug = move || params.read().get("slug").unwrap_or_default();
 
-    let post_resource = Resource::new(
-        slug,
-        |slug| async move { get_post_by_slug(slug).await },
-    );
+    let post_resource = Resource::new(slug, |slug| async move { get_post_by_slug(slug).await });
 
     view! {
         <div class="blog-post-container">
@@ -29,9 +26,7 @@ pub fn BlogPost() -> impl IntoView {
                                 <div class="not-found">
                                     <h1>"Post Not Found"</h1>
                                     <p>"The blog post you're looking for doesn't exist."</p>
-                                    <A href="/blog" attr:class="back-link">
-                                        "Go back to blog"
-                                    </A>
+                                    <GoBack go_to="blog" text="Back to Blog"/>
                                 </div>
                             }
                                 .into_any()
@@ -42,9 +37,7 @@ pub fn BlogPost() -> impl IntoView {
                                 <div class="error">
                                     <h1>"Error"</h1>
                                     <p>"Error loading post: " {e.to_string()}</p>
-                                    <A href="/blog" attr:class="back-link">
-                                        "Go back to blog"
-                                    </A>
+                                    <GoBack go_to="blog" text="Back to Blog"/>
                                 </div>
                             }
                                 .into_any()

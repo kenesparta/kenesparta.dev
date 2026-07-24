@@ -28,14 +28,19 @@ bc-blog = { path = "../../crates/bc-blog" }
 console_error_panic_hook = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
 
-# Server-only (feature `ssr`): runtime, HTTP and the DynamoDB adapter.
+# Server-only (feature `ssr`): runtime, HTTP and the Postgres adapter.
 leptos_axum = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 tower-http = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
-aws-config = { workspace = true, optional = true }
-aws-sdk-dynamodb = { workspace = true, optional = true }
+sqlx = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
+uuid = { workspace = true, optional = true }
+
+# Ingest CLI only (feature `ingest`): markdown → HTML + TOML frontmatter.
+pulldown-cmark = { workspace = true, optional = true }
+toml = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -49,12 +54,25 @@ ssr = [
     "dep:tokio",
     "dep:tower-http",
     "dep:async-trait",
-    "dep:aws-config",
-    "dep:aws-sdk-dynamodb",
+    "dep:sqlx",
+    "dep:thiserror",
+    "dep:uuid",
 ]
+# The `ingest` bin: everything the server has, plus the markdown pipeline.
+ingest = ["ssr", "dep:pulldown-cmark", "dep:toml"]
+
+[[bin]]
+name = "ingest"
+path = "src/bin/ingest.rs"
+# Keeps the bin out of `cargo leptos build` / the Docker image: cargo skips
+# bins whose required features are off.
+required-features = ["ingest"]
 
 [package.metadata.leptos]
 output-name = "kenespartadev"
+# The package has two bins (backend + ingest); tell cargo-leptos which one is
+# the server.
+bin-target = "backend"
 site-root = "target/kdevsite"
 site-pkg-dir = "pkg"
 style-file = "style/main.css"

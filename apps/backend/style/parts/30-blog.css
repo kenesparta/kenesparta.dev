@@ -5,20 +5,6 @@
     margin-inline: auto;
 }
 
-.blog-header {
-    text-align: center;
-    margin-bottom: clamp(1.5rem, 5vw, 2.5rem);
-}
-
-.blog-header h1 {
-    color: var(--primary-color);
-    font-size: clamp(2rem, 6vw, 2.75rem);
-}
-
-.blog-header p {
-    margin-top: 0.5rem;
-}
-
 .blog-posts {
     display: flex;
     flex-direction: column;
@@ -76,13 +62,62 @@
     margin-bottom: 1.5rem;
 }
 
+/* Quiet back-navigation link: muted until hovered, arrow nudges left. */
 .back-link {
-    display: inline-block;
-    margin-bottom: 1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 1.25rem;
+    font-size: 0.9rem;
+    color: var(--text-color);
 }
 
+.back-link:hover,
+.back-link:focus-visible {
+    color: var(--primary-color);
+}
+
+.back-link__arrow {
+    transition: transform 0.2s ease;
+}
+
+.back-link:hover .back-link__arrow,
+.back-link:focus-visible .back-link__arrow {
+    transform: translateX(-3px);
+}
+
+/* End-of-post navigation, separated from the content. */
+.post-footer {
+    margin-top: 2.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--accent-color);
+}
+
+.post-footer .back-link {
+    margin-bottom: 0;
+}
+
+/* Post title: the brand display font (same as the home title), larger, with
+   a navy → blue gradient across the text. Cards keep the plain .post-title. */
 .blog-post .post-title {
     margin: 0.5rem 0;
+    font-family: var(--font-display);
+    font-weight: 400; /* Delius Swash Caps ships regular only */
+    font-size: clamp(1.32rem, 4.2vw, 1.95rem);
+    line-height: 1.15;
+}
+
+@supports (-webkit-background-clip: text) or (background-clip: text) {
+    .blog-post .post-title {
+        background: linear-gradient(
+            100deg,
+            var(--secondary-color) 20%,
+            var(--primary-color)
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
 }
 
 .post-content {

@@ -22,3 +22,15 @@
     background-color: var(--accent-color);
     color: var(--secondary-color);
 }
+
+/* Mobile: tighter pills so all four links share one row with the brand icon,
+   while keeping ~40px tap targets. */
+@media (max-width: 480px) {
+    .nav-links {
+        gap: 0.15rem;
+    }
+
+    .nav-links__element {
+        padding: 0.5rem 0.55rem;
+    }
+}

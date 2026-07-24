@@ -1,11 +1,8 @@
 # ── Lightsail Container Service ──────────────────────────────────────────────
 # Runs the site container pulled directly from the PUBLIC GHCR image
 # (ghcr.io/kenesparta/kenespartadev). Unlike App Runner, Lightsail can pull from
-# a third-party registry.
-#
-# Phase 1: additive only. App Runner (app-runner-ke-dev.tf) stays up until this
-# is verified; the apex DNS is cut over to CloudFront -> Lightsail in a later
-# step. No downtime.
+# a third-party registry. The blog data lives in a Lightsail managed Postgres
+# database (created outside Terraform); the app reaches it via DATABASE_URL.
 
 resource "aws_lightsail_container_service" "app" {
   name        = "kenesparta-app"
@@ -21,52 +18,13 @@ resource "aws_lightsail_container_service" "app" {
   )
 }
 
-# ── IAM user for DynamoDB access ─────────────────────────────────────────────
-# Lightsail containers have no IAM role, so the app authenticates to DynamoDB
-# with static keys passed as env vars. Scoped to the blog table only.
-# TEMPORARY: remove once the blog moves to Postgres.
-resource "aws_iam_user" "lightsail_app" {
-  name = "kenesparta-lightsail-app"
-
-  tags = merge(
-    local.common_tags,
-    {
-      Name = "kenesparta-lightsail-app"
-    }
-  )
-}
-
-resource "aws_iam_user_policy" "lightsail_dynamodb" {
-  name = "dynamodb-blog-access"
-  user = aws_iam_user.lightsail_app.name
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AllowDynamoDBBlogAccess"
-        Effect = "Allow"
-        Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:UpdateItem",
-          "dynamodb:DeleteItem",
-          "dynamodb:Query",
-          "dynamodb:Scan",
-          "dynamodb:BatchGetItem",
-          "dynamodb:BatchWriteItem"
-        ]
-        Resource = [
-          "arn:aws:dynamodb:${var.region}:*:table/kenesparta-blog-posts",
-          "arn:aws:dynamodb:${var.region}:*:table/kenesparta-blog-posts/index/*"
-        ]
-      }
-    ]
-  })
-}
-
-resource "aws_iam_access_key" "lightsail_app" {
-  user = aws_iam_user.lightsail_app.name
+# ── Secrets (sops/age) ───────────────────────────────────────────────────────
+# DATABASE_URL points at the Lightsail managed Postgres (created outside
+# Terraform). Decrypted at plan/apply time; the value lands in the TF state in
+# S3 (encrypted bucket) — same exposure class as the old IAM access key.
+data "sops_file" "prod_secrets" {
+  source_file = "${path.module}/../secrets/prod.enc.env"
+  input_type  = "dotenv"
 }
 
 # ── Deployment (container spec: image, env, port, health check) ──────────────
@@ -82,12 +40,9 @@ resource "aws_lightsail_container_service_deployment_version" "app" {
     }
 
     environment = {
-      LEPTOS_SITE_ADDR      = "0.0.0.0:3000"
-      RUST_LOG              = "info"
-      AWS_REGION            = var.region
-      DYNAMODB_TABLE_NAME   = "kenesparta-blog-posts"
-      AWS_ACCESS_KEY_ID     = aws_iam_access_key.lightsail_app.id
-      AWS_SECRET_ACCESS_KEY = aws_iam_access_key.lightsail_app.secret
+      LEPTOS_SITE_ADDR = "0.0.0.0:3000"
+      RUST_LOG         = "info"
+      DATABASE_URL     = data.sops_file.prod_secrets.data["DATABASE_URL"]
     }
   }
 

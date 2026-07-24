@@ -9,7 +9,9 @@ Personal portfolio website built with Leptos (Rust full-stack web framework), de
 - **Compression**: tower-http with Brotli and Gzip support
 - **Styling**: plain CSS — `style/parts/*.css` concatenated into `style/main.css` by `make css` (no Sass), minified by cargo-leptos via lightningcss
 - **Testing**: Playwright for end-to-end tests
-- **Infrastructure**: Terraform (AWS Lightsail Containers, CloudFront, Route53, ACM, DynamoDB)
+- **Database**: PostgreSQL (Lightsail managed database) via SQLx — blog posts authored as Markdown in `content/posts/`
+- **Secrets**: [sops](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age) — encrypted dotenv files committed under `secrets/`
+- **Infrastructure**: Terraform (AWS Lightsail Containers, CloudFront, Route53, ACM)
 - **CI/CD**: GitHub Actions — publishes the image to GHCR, then triggers a Lightsail redeploy (AWS OIDC)
 
 ## Architecture
@@ -23,7 +25,7 @@ CloudFront (HTTPS, ACM cert)
    ↓
 Lightsail Container Service  ←  image: ghcr.io/kenesparta/kenespartadev
    ↓
-Leptos App (Axum + Brotli)   →  DynamoDB (blog)
+Leptos App (Axum + Brotli)   →  Lightsail PostgreSQL (blog)
 ```
 
 ## Prerequisites
@@ -33,6 +35,7 @@ Leptos App (Axum + Brotli)   →  DynamoDB (blog)
 - **Rust nightly**: `rustup toolchain install nightly --allow-downgrade`
 - **WASM target**: `rustup target add wasm32-unknown-unknown`
 - **cargo-leptos**: `cargo install cargo-leptos --locked`
+- **sops + age** (secrets): `brew install sops age`
 
 ### For Infrastructure Management
 
@@ -43,34 +46,43 @@ Leptos App (Axum + Brotli)   →  DynamoDB (blog)
 ### For Testing
 
 - **Node.js**: v18+ (for Playwright)
-- **Playwright**: `cd site/end2end && npm install`
+- **Playwright**: `cd apps/backend/end2end && npm install`
 
 ## Getting Started
 
 ### Local Development
 
+The easy path (app + PostgreSQL, hot-reload):
+
 ```bash
-cd site
-cargo leptos watch
+make dev/up
 ```
 
-This starts the development server with hot-reload at http://localhost:3000
+Or on the host (needs the dev database running: `docker compose -f docker-compose.dev.yml up -d postgres`):
+
+```bash
+sops exec-env secrets/dev.enc.env 'sh -c "cd apps/backend && cargo leptos watch"'
+```
+
+This starts the development server with hot-reload at http://localhost:3000.
+The app requires `DATABASE_URL` and fails fast without it — `make dev/up` sets
+it, and `sops exec-env` injects it from the encrypted dev secrets.
 
 ### Building for Production
 
 ```bash
-cd site
+cd apps/backend
 cargo leptos build --release
 ```
 
 Output:
-- Binary: `target/release/kenespartadev`
+- Binary: `target/release/backend`
 - Site assets: `target/kdevsite/`
 
 ### Running Tests
 
 ```bash
-cd site
+cd apps/backend
 
 # Debug mode
 cargo leptos end-to-end
@@ -79,13 +91,81 @@ cargo leptos end-to-end
 cargo leptos end-to-end --release
 ```
 
+## Secrets (sops + age)
+
+Secrets live encrypted in the repo (`secrets/dev.enc.env`, `secrets/prod.enc.env`,
+dotenv format) and are safe to commit. Encryption uses [sops](https://github.com/getsops/sops)
+with an [age](https://github.com/FiloSottile/age) key that stays **outside** the repo.
+
+One-time setup on a new machine:
+
+```bash
+brew install sops age
+mkdir -p ~/.config/sops/age && age-keygen -o ~/.config/sops/age/keys.txt
+# add the printed "public key: age1..." to .sops.yaml and run `make secrets-rotate`
+```
+
+> **macOS note**: sops' default age key path on macOS is
+> `~/Library/Application Support/sops/age/keys.txt`. The Makefiles export
+> `SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt`; add the same export to your
+> shell profile for bare `sops` commands.
+
+Day-to-day:
+
+```bash
+make secrets          # edit dev secrets in $EDITOR (re-encrypts on save)
+make secrets-prod     # edit prod secrets
+make secrets-view ENV=prod   # print decrypted secrets
+make secrets-rotate   # re-encrypt after changing recipients in .sops.yaml
+```
+
+The only secret today is `DATABASE_URL`. Terraform decrypts `secrets/prod.enc.env`
+(carlpett/sops provider) and injects it into the Lightsail deployment; CI never
+sees the age key.
+
+## Writing Blog Posts
+
+Posts are Markdown files under `content/posts/` with TOML frontmatter between
+`+++` fences:
+
+```markdown
++++
+title = "My Post"
+summary = "One-line summary shown on the blog card."
+date = "2026-07-21T00:00:00Z"        # RFC 3339; becomes created_at/published_at
+tags = ["rust"]                      # optional, default []
+status = "published"                 # optional, default "draft" (not public)
+# author = "Ken Esparta"             # optional, this is the default
+# slug = "my-post"                   # optional, defaults to the file stem
++++
+
+Markdown body (tables, footnotes and strikethrough enabled)...
+```
+
+Publish with the ingest CLI — it renders Markdown → HTML (pulldown-cmark) and
+upserts each post **by slug** (idempotent; `post_id` and `created_at` are
+preserved, so URLs never break):
+
+```bash
+make blog/ingest             # into the dev database
+make blog/publish            # into PRODUCTION
+```
+
+Note: with the Lightsail database's public mode off, your machine cannot reach
+it — temporarily enable it around a publish:
+
+```bash
+aws lightsail update-relational-database --relational-database-name <db> --publicly-accessible
+make blog/publish
+aws lightsail update-relational-database --relational-database-name <db> --no-publicly-accessible
+```
+
 ## Docker
 
 ### Build Image
 
 ```bash
-cd site
-docker build -t kenespartadev .
+docker build -t kenespartadev .   # build context is the workspace root
 ```
 
 ### Run Container
@@ -95,7 +175,7 @@ docker run -p 3000:3000 kenespartadev
 ```
 
 The multi-stage Dockerfile:
-1. **Builder**: Uses `rust:1.90`, installs cargo-leptos, builds release binary
+1. **Builder**: Uses `rust:1.97`, installs cargo-leptos, builds release binary
 2. **Runtime**: Uses distroless image, runs as non-root user
 
 ## Infrastructure
@@ -108,9 +188,14 @@ The `tf/` directory requires a `.env` file with AWS SSO profile:
 TF_VAR_aws_sso_profile=your-profile-name
 ```
 
+Terraform also needs the age key (`SOPS_AGE_KEY_FILE`, exported by `tf/Makefile`)
+to decrypt `secrets/prod.enc.env` at plan/apply time.
+
 ### Infrastructure Management
 
-Manages the Lightsail Container Service, CloudFront, Route53, ACM certificates, and DynamoDB.
+Manages the Lightsail Container Service, CloudFront, Route53, and ACM certificates.
+The PostgreSQL database is a Lightsail managed database created outside Terraform;
+its connection string lives in `secrets/prod.enc.env`.
 
 ```bash
 cd tf
@@ -126,23 +211,28 @@ make dev/destroy # Destroy resources
 
 ```
 .
+├── content/
+│   └── posts/              # Blog posts: Markdown + TOML frontmatter (source of truth)
 ├── crates/
 │   ├── shared-kernel/      # Cross-cutting types (DomainError, Datetime, PostUuid)
 │   └── bc-blog/            # Blog Bounded Context (domain + application, no runtime/IO)
 ├── apps/
 │   └── backend/           # Leptos app (SSR + hydrate) + all adapters
 │       ├── src/           # main.rs, lib.rs, app/ (UI), persistence/, composition.rs, http.rs
+│       ├── src/bin/       # ingest.rs (markdown → Postgres CLI, feature `ingest`)
+│       ├── migrations/    # SQLx migrations (embedded in the binary)
 │       ├── style/         # parts/*.css (source) → main.css (via make css)
 │       ├── public/        # Static assets
 │       └── end2end/       # Playwright tests
+├── secrets/               # sops/age-encrypted dotenv files (safe to commit)
+├── .sops.yaml             # sops creation rules (age recipients)
 ├── Dockerfile             # Multi-stage build (builds from apps/backend)
 ├── tf/                        # Terraform infrastructure
-│   ├── lightsail.tf          # Lightsail Container Service (pulls GHCR) + DynamoDB IAM user
+│   ├── lightsail.tf          # Lightsail Container Service (pulls GHCR) + sops secrets
 │   ├── cloudfront.tf         # CloudFront (fronts the apex) + apex ALIAS record
 │   ├── iam-main.tf           # GitHub Actions OIDC role (GHCR build + Lightsail deploy)
 │   ├── dns-*.tf              # Route53 zones and records
-│   ├── acm.tf                # ACM certificate (used by CloudFront)
-│   └── dynamodb.tf           # DynamoDB table for blog posts
+│   └── acm.tf                # ACM certificate (used by CloudFront)
 ├── .github/workflows/     # CI/CD pipelines
 └── Makefile               # Build shortcuts
 ```
@@ -161,17 +251,17 @@ make dev/destroy # Destroy resources
 ### Security
 - **IAM Roles**: OIDC federation for GitHub Actions (no long-lived credentials)
 - **Lightsail deploy**: the OIDC role triggers a Lightsail redeploy after the image is on GHCR
-- **DynamoDB access**: dedicated IAM user (`kenesparta-lightsail-app`) — Lightsail containers get no IAM role
-- **SSL/TLS**: ACM certificate for `kenesparta.dev` + `*.kenesparta.dev` (used by CloudFront)
+- **Secrets**: sops/age-encrypted in the repo; decrypted only locally (Terraform) — the age key never leaves your machine
+- **SSL/TLS**: ACM certificate for `kenesparta.dev` + `*.kenesparta.dev` (used by CloudFront); `DATABASE_URL` uses `sslmode=require`
 
 ### DNS
 - **Route53**: apex ALIAS `kenesparta.dev` → CloudFront
 - **Custom Domain**: certificate validated via DNS
 
 ### Database
-- **DynamoDB Table**: `kenesparta-blog-posts`
-- **Billing**: Pay-per-request (on-demand)
-- **Features**: Point-in-time recovery, server-side encryption
+- **Lightsail Managed PostgreSQL**: created manually in the Lightsail console (outside Terraform)
+- **Access**: the container connects with `DATABASE_URL` (TLS, `sslmode=require`); with public mode off, only Lightsail resources in the region can reach it
+- **Schema**: owned by SQLx migrations in `apps/backend/migrations/`, run automatically at app startup and by the ingest CLI
 
 ## CI/CD Pipeline
 
@@ -189,7 +279,8 @@ The application uses leptos_router with the following routes:
 
 - `/` - Home page
 - `/about` - About page
-- `/blog` - Blog (coming soon)
+- `/blog` - Blog (list of published posts)
+- `/blog/:slug` - Blog post detail
 - `/experience` - Experience timeline (coming soon)
 - `/projects` - Projects showcase (coming soon)
 
@@ -220,8 +311,9 @@ From `Cargo.toml`:
 
 ### Feature Flags
 
-- `ssr`: Server-side rendering (Axum, tokio, leptos_axum, tower-http)
+- `ssr`: Server-side rendering (Axum, tokio, leptos_axum, tower-http, SQLx)
 - `hydrate`: Client-side hydration (WASM, wasm-bindgen)
+- `ingest`: the `ingest` bin (`ssr` + pulldown-cmark + toml); excluded from the server build via `required-features`
 
 ### Cost Optimization
 

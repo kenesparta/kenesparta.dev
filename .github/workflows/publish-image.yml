@@ -82,8 +82,8 @@ jobs:
           set -euo pipefail
           # Re-submit the CURRENT container spec so Lightsail creates a new
           # deployment that re-pulls the freshly-pushed :latest image. The env
-          # values (incl. DynamoDB keys) round-trip in the runner's memory and
-          # are never printed (create output is filtered to just the state).
+          # values (incl. DATABASE_URL, set by Terraform) round-trip in the
+          # runner's memory and are never printed (output is just the state).
           spec=$(aws lightsail get-container-service-deployments \
             --service-name "$SERVICE" --region us-east-1 --output json)
           containers=$(echo "$spec" | jq -c '.deployments[0].containers')
@@ -92,4 +92,4 @@ jobs:
             --service-name "$SERVICE" --region us-east-1 \
             --containers "$containers" --public-endpoint "$endpoint" \
             --query 'containerService.nextDeployment.state' --output text)
-          echo "Lightsail deployment iniciado: $state"
+          echo "Lightsail deployment started: $state"

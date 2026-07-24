@@ -1,7 +1,7 @@
 //! Server entry point.
 //!
 //! The only place in the workspace that knows about the runtime, the HTTP
-//! server and DynamoDB. Everything mounted lives in `composition.rs`; here we
+//! server and Postgres. Everything mounted lives in `composition.rs`; here we
 //! only assemble the Axum + Leptos router and start it.
 
 #[cfg(feature = "ssr")]
@@ -15,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use leptos_axum::{LeptosRoutes, generate_route_list};
     use tower_http::compression::CompressionLayer;
 
-    let config = configuration::Configuration::from_env();
+    let config = configuration::Configuration::from_env()?;
     let container = composition::compose(&config).await?;
 
     // Leptos config: in dev cargo-leptos injects it via the environment; in the
@@ -25,11 +25,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = leptos_options.site_addr;
     let routes = generate_route_list(App);
 
-    let state = ServerState { leptos_options, container };
+    let state = ServerState {
+        leptos_options,
+        container,
+    };
 
     let app = Router::new()
         // Leptos server functions, with the container in the reactive context.
-        .route("/api/{*fn_name}", axum::routing::any(http::handle_server_fns))
+        .route(
+            "/api/{*fn_name}",
+            axum::routing::any(http::handle_server_fns),
+        )
         // Leptos pages (SSR + hydration).
         .leptos_routes_with_context(
             &state,

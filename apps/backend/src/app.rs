@@ -12,8 +12,9 @@ use leptos::prelude::*;
 use leptos_meta::*;
 use leptos_router::hooks::use_location;
 use leptos_router::{
+    StaticSegment,
     components::{Route, Router, Routes},
-    path, StaticSegment,
+    path,
 };
 
 #[component]

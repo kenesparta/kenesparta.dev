@@ -1,6 +1,10 @@
 SHELL:=/bin/bash
 include .env
 
+# Age key for the sops provider (decrypts ../secrets/prod.enc.env at
+# plan/apply). sops' macOS default path differs, so pin it explicitly.
+export SOPS_AGE_KEY_FILE ?= $(HOME)/.config/sops/age/keys.txt
+
 login:
 	@aws sso login --profile ${TF_VAR_aws_sso_profile}
 

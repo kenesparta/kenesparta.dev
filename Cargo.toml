@@ -24,15 +24,28 @@ leptos_meta = "0.8.0"
 leptos_router = "0.8.0"
 leptos_axum = "0.8.0"
 
-# Server-only: runtime, HTTP and the DynamoDB client.
+# Server-only: runtime, HTTP and the Postgres client.
 axum = { version = "0.8.0", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.7.0", features = ["compression-full"] }
-aws-config = "1.5"
-# default-features disabled to drop the legacy `rustls` feature (hyper-0.14 +
-# rustls 0.21 → the vulnerable rustls-webpki 0.101.7). We keep the modern
-# `default-https-client` connector (rustls-aws-lc / rustls 0.23).
-aws-sdk-dynamodb = { version = "1.60", default-features = false, features = ["default-https-client", "rt-tokio"] }
+# Runtime queries (query_as + FromRow derive) — we never use the query!
+# macros, so the Docker build stays free of DATABASE_URL / offline caches.
+# `macros` is needed anyway for migrate!(), which embeds migrations/*.sql
+# into the binary at compile time (nothing extra to ship to distroless).
+# tls-rustls-aws-lc-rs keeps crypto on aws-lc (the stack the AWS SDK used).
+sqlx = { version = "0.9.0", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls-aws-lc-rs",
+    "postgres",
+    "uuid",
+    "chrono",
+    "migrate",
+    "macros",
+] }
+
+# Ingest CLI only (feature `ingest` in apps/backend).
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+toml = "0.8"
 
 # Hydration-only (wasm artifact). Pinned to the exact version whose bindgen
 # schema matches the wasm-bindgen CLI bundled with cargo-leptos 0.2.46.

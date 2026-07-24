@@ -1,4 +1,28 @@
 services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: kenespartadev-db
+    environment:
+      - POSTGRES_USER=blog
+      - POSTGRES_PASSWORD=blog
+      - POSTGRES_DB=blog
+    ports:
+      # Published so host-side runs (cargo leptos watch, make blog/ingest)
+      # reach the same database.
+      - "5432:5432"
+    volumes:
+      # postgres 18+ images keep data in version-specific subdirs under
+      # /var/lib/postgresql — mounting the old /data path would leave the
+      # database outside the volume.
+      - pg-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blog -d blog"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - dev-network
+
   leptos-dev:
     build:
       context: .
@@ -12,17 +36,19 @@ services:
 
       - cargo-cache:/usr/local/cargo/registry
       - target-cache:/app/target
-
-      - ~/.aws:/root/.aws:ro
     environment:
       - RUST_LOG=debug
-      - AWS_PROFILE=AdministratorAccess-711387133796
+      - DATABASE_URL=postgres://blog:blog@postgres:5432/blog
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - dev-network
 
 volumes:
   cargo-cache:
   target-cache:
+  pg-data:
 
 networks:
   dev-network:

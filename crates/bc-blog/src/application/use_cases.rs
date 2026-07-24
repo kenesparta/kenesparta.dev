@@ -6,10 +6,11 @@
 
 use std::sync::Arc;
 
+use shared_kernel::{Datetime, PostUuid};
 use thiserror::Error;
 
 use super::dto::{BlogPostDTO, BlogPostSummaryDTO};
-use crate::domain::model::BlogPostSummary;
+use crate::domain::model::{BlogPost, BlogPostSummary, PostStatus};
 use crate::domain::repository::{BlogRepository, RepositoryError};
 
 #[derive(Debug, Error)]
@@ -57,7 +58,11 @@ impl GetPostBySlug {
     ///
     /// [`UseCaseError::Repository`] if the persistence port fails.
     pub async fn execute(&self, slug: &str) -> Result<Option<BlogPostDTO>, UseCaseError> {
-        Ok(self.repository.find_by_slug(slug).await?.map(BlogPostDTO::from))
+        Ok(self
+            .repository
+            .find_by_slug(slug)
+            .await?
+            .map(BlogPostDTO::from))
     }
 }
 
@@ -81,5 +86,58 @@ impl GetPostById {
             .await?
             .map(BlogPostDTO::from)
             .ok_or(UseCaseError::NotFound)
+    }
+}
+
+/// Command to create or replace a post, keyed by slug. `content_html` carries
+/// the already-rendered HTML (the domain stores HTML, not markdown).
+#[derive(Debug, Clone)]
+pub struct UpsertPostCommand {
+    pub title: String,
+    pub slug: String,
+    pub content_html: String,
+    pub summary: String,
+    pub author: String,
+    pub tags: Vec<String>,
+    pub published: bool,
+    /// Authoring date, Unix seconds.
+    pub date: i64,
+}
+
+/// Create or update a post by slug (the ingest write path).
+pub struct UpsertPost {
+    repository: Arc<dyn BlogRepository>,
+}
+
+impl UpsertPost {
+    pub fn new(repository: Arc<dyn BlogRepository>) -> Self {
+        Self { repository }
+    }
+
+    /// # Errors
+    ///
+    /// [`UseCaseError::Repository`] if the persistence port fails.
+    pub async fn execute(&self, cmd: UpsertPostCommand) -> Result<(), UseCaseError> {
+        let status = if cmd.published {
+            PostStatus::Published
+        } else {
+            PostStatus::Draft
+        };
+        // `post_id` and `created_at` only apply on first insert; on a slug
+        // conflict the repository preserves the stored values.
+        let post = BlogPost {
+            post_id: PostUuid::new(),
+            title: cmd.title,
+            slug: cmd.slug,
+            content: cmd.content_html,
+            summary: cmd.summary,
+            author: cmd.author,
+            tags: cmd.tags,
+            published_at: (status == PostStatus::Published).then_some(cmd.date),
+            status,
+            created_at: cmd.date,
+            updated_at: Datetime::now(),
+        };
+        Ok(self.repository.upsert(&post).await?)
     }
 }

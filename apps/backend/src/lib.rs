@@ -3,7 +3,7 @@
 //! Dual crate:
 //! - As a **wasm library** (feature `hydrate`) it contains only the Leptos UI
 //!   (`app/`) and hydrates in the browser.
-//! - As a **binary** (feature `ssr`) it hosts every adapter (DynamoDB
+//! - As a **binary** (feature `ssr`) it hosts every adapter (PostgreSQL
 //!   persistence, HTTP) and the wiring of the Bounded Contexts.
 
 pub mod app;

@@ -1,9 +1,9 @@
-use bc_blog::application::dto::BlogPostDTO;
 use crate::app::components::blog::tags::Tags;
 use crate::app::components::blog::utils::published_date;
 use crate::app::components::go_back::GoBack;
+use bc_blog::application::dto::BlogPostDTO;
 use leptos::prelude::*;
-use leptos::{component, view, IntoView};
+use leptos::{IntoView, component, view};
 
 #[component]
 pub fn Article(post: BlogPostDTO) -> impl IntoView {
@@ -23,6 +23,10 @@ pub fn Article(post: BlogPostDTO) -> impl IntoView {
             </header>
 
             <div class="post-content" inner_html=post.content></div>
+
+            <footer class="post-footer">
+                <GoBack go_to="blog" text="All posts"/>
+            </footer>
         </article>
     }
     .into_any()

@@ -1,0 +1,53 @@
+/* Projects page — card grid. Mirrors the blog card look (30-blog.css). */
+.projects-container {
+    max-width: var(--measure);
+    margin-inline: auto;
+}
+
+/* Responsive without media queries: 2 columns on desktop, 1 on mobile. */
+.projects-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+    gap: 1rem;
+}
+
+.project-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: clamp(1rem, 3vw, 1.5rem);
+    border: 1px solid var(--accent-color);
+    border-radius: var(--radius);
+    transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.project-card:hover {
+    border-color: var(--primary-color);
+    transform: translateY(-2px);
+}
+
+.project-name {
+    color: var(--secondary-color);
+    font-size: clamp(1.15rem, 3.5vw, 1.4rem);
+    line-height: 1.2;
+}
+
+/* Pin the repo links to the card bottom so grids of uneven text align. */
+.project-links {
+    margin-top: auto;
+    padding-top: 0.5rem;
+    display: flex;
+    gap: 0.75rem;
+}
+
+.project-links a {
+    display: inline-flex;
+    color: var(--secondary-color);
+    transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.project-links a:hover,
+.project-links a:focus-visible {
+    color: var(--primary-color);
+    transform: translateY(-2px);
+}

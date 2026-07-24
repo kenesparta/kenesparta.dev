@@ -1,6 +1,14 @@
-.PHONY: dev/up dev/down dev/build dev/restart dev/logs dev/shell dev/clean css leptos/build
+.PHONY: dev/up dev/down dev/build dev/restart dev/logs dev/shell dev/clean css leptos/build \
+        secrets secrets-prod secrets-view secrets-rotate blog/ingest blog/publish
 
 STYLE_DIR := apps/backend/style
+
+# Secrets: sops + age. ENV selects the file (dev|prod).
+ENV ?= dev
+SECRETS := secrets/$(ENV).enc.env
+# sops' default age key path on macOS is ~/Library/Application Support/...;
+# we keep the key at the XDG path, so point sops (and Terraform) at it.
+export SOPS_AGE_KEY_FILE ?= $(HOME)/.config/sops/age/keys.txt
 
 # Development commands
 dev/up: ## Start development environment with hot-reload
@@ -34,3 +42,28 @@ css: ## Rebuild the CSS bundle from style/parts/*.css
 
 leptos/build: css
 	cd apps/backend && cargo leptos build --release
+
+## secrets:       edita los secretos de dev con el editor ($$EDITOR), re-cifra al guardar
+secrets:
+	@sops secrets/dev.enc.env
+
+## secrets-prod:  edita los secretos de prod
+secrets-prod:
+	@sops secrets/prod.enc.env
+
+## secrets-view:  muestra los secretos descifrados en stdout (ENV=dev|prod)
+secrets-view:
+	@sops -d $(SECRETS)
+
+## secrets-rotate: re-cifra el data key para los destinatarios actuales de .sops.yaml
+##                 (tras añadir/quitar una public key age)
+secrets-rotate:
+	@sops updatekeys secrets/dev.enc.env secrets/prod.enc.env
+
+## blog/ingest:   renderiza content/posts/*.md y hace upsert en la BD (ENV=dev|prod)
+blog/ingest:
+	sops exec-env $(SECRETS) 'cargo run -p backend --no-default-features --features ingest --bin ingest -- content/posts'
+
+## blog/publish:  publica los posts en PRODUCCIÓN
+blog/publish:
+	$(MAKE) blog/ingest ENV=prod

@@ -1,0 +1,62 @@
+/* About — bio, skills, education. */
+.about-container {
+    max-width: var(--measure);
+    margin-inline: auto;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(1.5rem, 4vw, 2rem);
+}
+
+.about-bio {
+    font-size: 1.05rem;
+}
+
+.about-section h2 {
+    color: var(--secondary-color);
+    font-size: clamp(1.3rem, 4vw, 1.6rem);
+    margin-bottom: 0.9rem;
+}
+
+/* Skill rows: bold label + tag pills, wrapping on narrow screens. */
+.skill-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.skill-group__name {
+    font-weight: 700;
+    font-size: 0.9rem;
+    min-width: 11rem;
+}
+
+.education-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 1rem;
+}
+
+.education-entry {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+}
+
+.education-school {
+    color: var(--secondary-color);
+}
+
+.education-detail {
+    font-size: 0.95rem;
+}
+
+.education-period {
+    font-size: 0.9rem;
+    color: var(--text-color);
+    white-space: nowrap;
+}

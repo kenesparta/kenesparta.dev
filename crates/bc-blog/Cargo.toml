@@ -12,9 +12,9 @@ unsafe_code = "forbid"
 #
 # Dependency rules:
 #  - YES: shared-kernel, async-trait, thiserror, serde.
-#  - NO:  tokio, axum, aws-sdk, any concrete client/runtime.
+#  - NO:  tokio, axum, sqlx, any concrete client/runtime.
 #
-# DynamoDB is reached through the `BlogRepository` port, implemented in the
+# PostgreSQL is reached through the `BlogRepository` port, implemented in the
 # binary crate (apps/backend).
 [dependencies]
 shared-kernel = { path = "../shared-kernel" }
