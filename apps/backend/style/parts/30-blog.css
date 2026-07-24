@@ -139,6 +139,17 @@
     text-decoration: underline;
 }
 
+/* The global reset strips list padding; restore it so markers stay inside
+   the text column instead of hanging into the page margin. */
+.post-content ul,
+.post-content ol {
+    padding-inline-start: 1.5rem;
+}
+
+.post-content li + li {
+    margin-top: 0.35rem;
+}
+
 .post-content img {
     border-radius: var(--radius);
     margin-block: 1rem;
