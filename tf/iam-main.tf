@@ -85,6 +85,8 @@ resource "aws_iam_role_policy" "github_actions_lightsail" {
 
 # ECR push for the CI build-push job. GetAuthorizationToken cannot be scoped
 # to a repository; the push/pull actions are limited to the app repo.
+# GetRepositoryPolicy is for the deploy job: the Lightsail deployment resource
+# depends_on the repo policy, so the -target apply refreshes it.
 resource "aws_iam_role_policy" "github_actions_ecr" {
   name = "ecr-push-policy"
   role = aws_iam_role.github_actions_deploy.id
@@ -110,7 +112,8 @@ resource "aws_iam_role_policy" "github_actions_ecr" {
           "ecr:CompleteLayerUpload",
           "ecr:PutImage",
           "ecr:DescribeRepositories",
-          "ecr:ListTagsForResource"
+          "ecr:ListTagsForResource",
+          "ecr:GetRepositoryPolicy"
         ]
         Resource = aws_ecr_repository.app.arn
       }
