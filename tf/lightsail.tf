@@ -12,6 +12,11 @@ resource "aws_lightsail_container_service" "app" {
 
   # ECR image-puller role: lets the service pull the private image
   # (aws_ecr_repository_policy.lightsail_pull grants it on the repo side).
+  # Provider 6.15 can report this update applied without activating the role
+  # (state and live service stay is_active=false, principal_arn empty). If
+  # that happens, activate it out of band and re-plan:
+  #   aws lightsail update-container-service --service-name kenesparta-app \
+  #     --private-registry-access '{"ecrImagePullerRole":{"isActive":true}}'
   private_registry_access {
     ecr_image_puller_role {
       is_active = true
@@ -38,6 +43,10 @@ data "sops_file" "prod_secrets" {
 # ── Deployment (container spec: image, env, port, health check) ──────────────
 resource "aws_lightsail_container_service_deployment_version" "app" {
   service_name = aws_lightsail_container_service.app.name
+
+  # Without this edge Terraform starts the deployment in parallel with the
+  # repo policy, and the service tries to pull before it has permission.
+  depends_on = [aws_ecr_repository_policy.lightsail_pull]
 
   container {
     container_name = "app"
