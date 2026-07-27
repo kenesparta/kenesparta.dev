@@ -1,7 +1,0 @@
-.env
-.idea
-
-.terraform
-.terraform.lock.hcl
-*.plan
-*.tfplan
