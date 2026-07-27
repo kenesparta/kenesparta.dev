@@ -1,14 +1,9 @@
-# On every vX.Y.Z tag: (1) `build-push` publishes the backend image to the
-# private ECR repo and (2) `deploy` rolls it out on Lightsail with a
-# `terraform apply` scoped (-target) to the deployment resource — it never
-# touches CloudFront/Route53/ACM/IAM. Both jobs assume the CI role via OIDC
-# (secret AWS_ROLE_ARN).
-#
-# Repo secrets (Settings → Secrets and variables → Actions):
-#   AWS_ROLE_ARN = OIDC role ARN (terraform: aws_iam_role.github_actions_deploy)
-#   SOPS_AGE_KEY = the age private key (AGE-SECRET-KEY-…, the line in
-#                  ~/.config/sops/age/keys.txt) so the sops provider can
-#                  decrypt secrets/prod.enc.env during the apply.
+# On every vX.Y.Z tag: build the backend image and push it to GHCR as both
+# vX.Y.Z and latest. That IS the whole deploy — the host's systemd timer
+# (personal-infra-deploy@blog, see personal-infra spec AD-5) polls GHCR every
+# 10 minutes and runs `docker compose pull && up -d`, so moving `latest` is
+# what makes a release go live. Nothing here touches AWS: no ECR, no OIDC
+# role, no Terraform (personal-infra spec AD-10, Phase 5).
 #
 # Publish a version:  git tag v1.0.0 && git push origin v1.0.0
 
@@ -19,19 +14,17 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
 
-# Deploys share Terraform state: never run two rollouts at once, and don't
-# cancel one mid-apply.
+# One build at a time; a half-superseded `latest` helps nobody.
 concurrency:
   group: publish-image
   cancel-in-progress: false
 
 permissions:
-  id-token: write # OIDC: AssumeRoleWithWebIdentity
   contents: read
+  packages: write # push to ghcr.io with GITHUB_TOKEN
 
 env:
-  AWS_REGION: us-east-1 # ECR + Terraform state region (must match var.region)
-  REPO: kenespartadev # = aws_ecr_repository.app.name
+  IMAGE: ghcr.io/${{ github.repository_owner }}/kenespartadev
 
 jobs:
   build-push:
@@ -41,62 +34,27 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
+      - name: Login to GHCR
+        uses: docker/login-action@v3
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: ecr
-        uses: aws-actions/amazon-ecr-login@v2
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push to ECR
+      - name: Build and push to GHCR
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
           push: true
           tags: |
-            ${{ steps.ecr.outputs.registry }}/${{ env.REPO }}:${{ github.ref_name }}
-            ${{ steps.ecr.outputs.registry }}/${{ env.REPO }}:latest
+            ${{ env.IMAGE }}:${{ github.ref_name }}
+            ${{ env.IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  # Lightsail rollout: terraform apply scoped to the deployment resource. The
-  # container env (incl. DATABASE_URL) comes from secrets/prod.enc.env via the
-  # sops provider — Terraform stays the single source of truth.
-  deploy:
-    needs: build-push
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Install Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.15.8" # same as local, avoids state format drift
-          terraform_wrapper: false
-
-      - name: Lightsail rollout
-        working-directory: tf
-        env:
-          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }} # decrypts secrets/prod.enc.env
-          TF_VAR_image_version: ${{ github.ref_name }} # the tag: vX.Y.Z
-        run: |
-          terraform init -input=false \
-            -backend-config="bucket=tf.kenesparta.dev" \
-            -backend-config="key=dns/prod/kenesparta.dev" \
-            -backend-config="region=${AWS_REGION}"
-          terraform apply -auto-approve -input=false \
-            -target=aws_lightsail_container_service_deployment_version.app
-          echo "::notice title=Lightsail rollout::deployed ${TF_VAR_image_version}"
+          # Links the ghcr package to this repository.
+          labels: |
+            org.opencontainers.image.source=${{ github.event.repository.html_url }}
