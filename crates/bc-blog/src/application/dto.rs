@@ -49,6 +49,7 @@ pub struct BlogPostSummaryDTO {
     pub author: String,
     pub tags: Vec<String>,
     pub created_at: i64,
+    pub updated_at: i64,
     pub published_at: Option<i64>,
 }
 
@@ -62,6 +63,7 @@ impl From<BlogPostSummary> for BlogPostSummaryDTO {
             author: summary.author,
             tags: summary.tags,
             created_at: summary.created_at,
+            updated_at: summary.updated_at,
             published_at: summary.published_at,
         }
     }

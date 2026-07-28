@@ -1,4 +1,4 @@
-use crate::app::components::{CodebergIcon, GithubIcon, Tags};
+use crate::app::components::{CodebergIcon, GithubIcon, PageMeta, Tags};
 use leptos::prelude::*;
 use leptos::{IntoView, component, view};
 
@@ -72,6 +72,12 @@ const PROJECTS: &[Project] = &[
 #[component]
 pub fn Projects() -> impl IntoView {
     view! {
+        <PageMeta
+            title="Projects - Ken Esparta"
+            description="Personal projects by Ken Esparta: full-stack Rust web development, \
+                         WebAssembly, Kubernetes operators, and infrastructure as code."
+            path="/projects"
+        />
         <div class="projects-container">
             <div class="projects-grid">
                 {PROJECTS

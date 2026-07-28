@@ -17,6 +17,8 @@ leptos.workspace = true
 leptos_meta.workspace = true
 leptos_router.workspace = true
 serde.workspace = true
+# JSON-LD (schema.org) blocks rendered by the UI on both targets.
+serde_json.workspace = true
 chrono.workspace = true
 
 # Bounded Context. Its domain is pure data, so it compiles to wasm too and the

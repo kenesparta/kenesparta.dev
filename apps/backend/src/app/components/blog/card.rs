@@ -1,5 +1,5 @@
 use crate::app::components::blog::tags::Tags;
-use crate::app::components::blog::utils::published_date;
+use crate::app::components::blog::utils::{published_date, rfc3339};
 use bc_blog::application::dto::BlogPostSummaryDTO;
 use leptos::prelude::*;
 use leptos::{IntoView, component, view};
@@ -32,7 +32,8 @@ pub fn BlogPostList(posts: Vec<BlogPostSummaryDTO>) -> impl IntoView {
 
 #[component]
 pub fn BlogPostCard(post: BlogPostSummaryDTO) -> impl IntoView {
-    let published_date = published_date(post.published_at);
+    let date_text = published_date(post.published_at);
+    let published_iso = rfc3339(post.published_at);
 
     view! {
         <article class="blog-post-card">
@@ -41,7 +42,7 @@ pub fn BlogPostCard(post: BlogPostSummaryDTO) -> impl IntoView {
             </A>
             <div class="post-meta">
                 <span class="post-author">{post.author}</span>
-                <span class="post-date">{published_date}</span>
+                <time class="post-date" datetime=published_iso>{date_text}</time>
             </div>
             <p class="post-summary">{post.summary}</p>
             <Tags tags=post.tags/>

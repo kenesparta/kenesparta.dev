@@ -87,6 +87,7 @@ pub struct BlogPostSummary {
     pub author: String,
     pub tags: Vec<String>,
     pub created_at: i64,
+    pub updated_at: i64,
     pub published_at: Option<i64>,
 }
 
@@ -100,6 +101,7 @@ impl From<BlogPost> for BlogPostSummary {
             author: post.author,
             tags: post.tags,
             created_at: post.created_at,
+            updated_at: post.updated_at,
             published_at: post.published_at,
         }
     }

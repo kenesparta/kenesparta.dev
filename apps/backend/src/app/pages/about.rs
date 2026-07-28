@@ -1,4 +1,4 @@
-use crate::app::components::{SocialLinks, Tags};
+use crate::app::components::{PageMeta, PersonJsonLd, SocialLinks, Tags};
 use leptos::prelude::*;
 use leptos::{IntoView, component, view};
 
@@ -82,7 +82,15 @@ const EDUCATION: &[Education] = &[
 #[component]
 pub fn About() -> impl IntoView {
     view! {
+        <PageMeta
+            title="About - Ken Esparta"
+            description="Senior software engineer with 8+ years of experience, specializing in \
+                         Go and Rust backend microservices across energy, video-on-demand, and \
+                         finance."
+            path="/about"
+        />
         <div class="about-container">
+            <PersonJsonLd/>
             <p class="about-bio">
                 "I'm a senior software engineer with 8+ years of experience, specializing in \
                  leading, architecting, and implementing highly efficient, highly secure \

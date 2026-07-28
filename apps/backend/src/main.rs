@@ -36,6 +36,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/api/{*fn_name}",
             axum::routing::any(http::handle_server_fns),
         )
+        // Crawler endpoints (robots.txt is a static asset in public/).
+        .route("/sitemap.xml", axum::routing::get(backend::seo::sitemap))
+        .route("/feed.xml", axum::routing::get(backend::seo::feed))
         // Leptos pages (SSR + hydration).
         .leptos_routes_with_context(
             &state,

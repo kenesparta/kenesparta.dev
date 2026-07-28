@@ -1,3 +1,4 @@
+use crate::app::components::PageMeta;
 use leptos::prelude::*;
 use leptos::{IntoView, component, view};
 
@@ -133,6 +134,13 @@ const ROLES: &[Role] = &[
 #[component]
 pub fn Experience() -> impl IntoView {
     view! {
+        <PageMeta
+            title="Experience - Ken Esparta"
+            description="Work history of Ken Esparta: senior software engineering roles building \
+                         Go and Rust backend systems for energy, video-on-demand, and finance \
+                         companies."
+            path="/experience"
+        />
         <div class="experience-container">
             <ol class="timeline">
                 {ROLES

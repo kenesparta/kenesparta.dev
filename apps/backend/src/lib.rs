@@ -16,6 +16,8 @@ pub mod configuration;
 pub mod http;
 #[cfg(feature = "ssr")]
 pub mod persistence;
+#[cfg(feature = "ssr")]
+pub mod seo;
 
 /// wasm entry point: hydrate the HTML already delivered by the server.
 #[cfg(feature = "hydrate")]

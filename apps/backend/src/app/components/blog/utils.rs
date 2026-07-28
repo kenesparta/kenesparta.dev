@@ -7,3 +7,11 @@ pub fn published_date(published_at: Option<i64>) -> String {
         .map(|dt: DateTime<Utc>| dt.format("%B %d, %Y").to_string())
         .unwrap_or_else(|| PostStatus::Draft.to_string())
 }
+
+/// RFC 3339 form of a Unix-seconds timestamp, for machine-readable dates
+/// (`<time datetime>`, Open Graph, JSON-LD). None when absent or out of range.
+pub fn rfc3339(timestamp: Option<i64>) -> Option<String> {
+    timestamp
+        .and_then(|ts| DateTime::from_timestamp(ts, 0))
+        .map(|dt: DateTime<Utc>| dt.to_rfc3339())
+}

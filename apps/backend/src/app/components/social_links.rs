@@ -1,5 +1,5 @@
 use super::icons::{CodebergIcon, GithubIcon};
-use crate::app::constants::BUCKET_URL;
+use crate::app::constants::{BUCKET_URL, CODEBERG_URL, GITHUB_URL, LINKEDIN_URL};
 use leptos::prelude::*;
 use leptos::{IntoView, component, view};
 
@@ -29,21 +29,15 @@ pub fn SocialLinks() -> impl IntoView {
     let resume = format!("{}/cv/ken_esparta_cv.pdf", BUCKET_URL);
     view! {
         <div class="social-links">
-            <SocialLink href="https://github.com/kenesparta" aria_label="Visit my GitHub profile">
+            <SocialLink href=GITHUB_URL aria_label="Visit my GitHub profile">
                 <GithubIcon/>
             </SocialLink>
 
-            <SocialLink
-                href="https://codeberg.org/kenesparta"
-                aria_label="Visit my Codeberg profile"
-            >
+            <SocialLink href=CODEBERG_URL aria_label="Visit my Codeberg profile">
                 <CodebergIcon/>
             </SocialLink>
 
-            <SocialLink
-                href="https://linkedin.com/in/kenesparta"
-                aria_label="Visit my LinkedIn profile"
-            >
+            <SocialLink href=LINKEDIN_URL aria_label="Visit my LinkedIn profile">
                 <svg
                     width="30"
                     height="30"
