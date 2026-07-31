@@ -90,6 +90,9 @@ fn parse_post(path: &Path) -> Result<UpsertPostCommand, Box<dyn std::error::Erro
         title: fm.title,
         slug,
         content_html: render_markdown(body),
+        // The body verbatim, minus the frontmatter: `/blog/<slug>.md` serves
+        // it back to agents, so it stays the authored source, not a round-trip.
+        content_md: body.to_string(),
         summary: fm.summary,
         author: fm.author,
         tags: fm.tags,

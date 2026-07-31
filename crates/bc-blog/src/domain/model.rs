@@ -39,7 +39,10 @@ pub struct BlogPost {
     pub post_id: String,
     pub title: String,
     pub slug: String,
+    /// Rendered HTML — what the pages display.
     pub content: String,
+    /// Authored Markdown source — what the `.md` crawler variants serve.
+    pub content_md: String,
     pub summary: String,
     pub author: String,
     pub tags: Vec<String>,
@@ -54,6 +57,7 @@ impl BlogPost {
         title: String,
         slug: String,
         content: String,
+        content_md: String,
         summary: String,
         author: String,
         tags: Vec<String>,
@@ -63,6 +67,7 @@ impl BlogPost {
             title,
             slug,
             content,
+            content_md,
             summary,
             author,
             tags,

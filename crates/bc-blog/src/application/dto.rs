@@ -40,6 +40,32 @@ impl From<BlogPost> for BlogPostDTO {
     }
 }
 
+/// Markdown projection: what `/blog/<slug>.md` serves.
+///
+/// Deliberately separate from [`BlogPostDTO`] — that one crosses the wire to
+/// the browser on every post view and has no use for the raw source, so the
+/// Markdown must not ride along and double the payload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostMarkdownDTO {
+    pub title: String,
+    pub slug: String,
+    pub content_md: String,
+    pub status: String,
+    pub updated_at: i64,
+}
+
+impl From<BlogPost> for PostMarkdownDTO {
+    fn from(post: BlogPost) -> Self {
+        Self {
+            title: post.title,
+            slug: post.slug,
+            content_md: post.content_md,
+            status: post.status.as_str().to_string(),
+            updated_at: post.updated_at,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlogPostSummaryDTO {
     pub post_id: String,

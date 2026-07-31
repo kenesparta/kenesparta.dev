@@ -1,4 +1,8 @@
 User-agent: *
 Allow: /
+# Internal target of the /blog/<slug>.md rewrite. Same bytes as the canonical
+# .md URL, so it must not be indexed as a second copy. Does not affect
+# /blog/<slug>.md itself — crawlers match on the URL they request.
+Disallow: /blog-md/
 
 Sitemap: https://kenesparta.dev/sitemap.xml

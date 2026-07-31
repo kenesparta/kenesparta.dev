@@ -16,6 +16,7 @@ struct BlogPostRow {
     title: String,
     slug: String,
     content: String,
+    content_md: String,
     summary: String,
     author: String,
     tags: Vec<String>,
@@ -39,6 +40,7 @@ impl From<BlogPostRow> for BlogPost {
             title: row.title,
             slug: row.slug,
             content: row.content,
+            content_md: row.content_md,
             summary: row.summary,
             author: row.author,
             tags: row.tags,
@@ -69,7 +71,7 @@ impl PostgresBlogRepository {
 impl BlogRepository for PostgresBlogRepository {
     async fn list_published(&self, limit: i32) -> Result<Vec<BlogPost>, RepositoryError> {
         let rows: Vec<BlogPostRow> = sqlx::query_as(
-            "SELECT post_id, title, slug, content, summary, author, \
+            "SELECT post_id, title, slug, content, content_md, summary, author, \
              tags, status, created_at, updated_at, published_at \
              FROM blog_posts \
              WHERE status = 'published' \
@@ -86,7 +88,7 @@ impl BlogRepository for PostgresBlogRepository {
 
     async fn find_by_slug(&self, slug: &str) -> Result<Option<BlogPost>, RepositoryError> {
         let row: Option<BlogPostRow> = sqlx::query_as(
-            "SELECT post_id, title, slug, content, summary, author, \
+            "SELECT post_id, title, slug, content, content_md, summary, author, \
              tags, status, created_at, updated_at, published_at \
              FROM blog_posts \
              WHERE slug = $1",
@@ -106,7 +108,7 @@ impl BlogRepository for PostgresBlogRepository {
         };
 
         let row: Option<BlogPostRow> = sqlx::query_as(
-            "SELECT post_id, title, slug, content, summary, author, \
+            "SELECT post_id, title, slug, content, content_md, summary, author, \
              tags, status, created_at, updated_at, published_at \
              FROM blog_posts \
              WHERE post_id = $1",
@@ -128,12 +130,13 @@ impl BlogRepository for PostgresBlogRepository {
         // ids and URLs stay stable across re-ingests.
         sqlx::query(
             "INSERT INTO blog_posts \
-               (post_id, title, slug, content, summary, author, tags, status, \
+               (post_id, title, slug, content, content_md, summary, author, tags, status, \
                 created_at, updated_at, published_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) \
              ON CONFLICT (slug) DO UPDATE SET \
                title = EXCLUDED.title, \
                content = EXCLUDED.content, \
+               content_md = EXCLUDED.content_md, \
                summary = EXCLUDED.summary, \
                author = EXCLUDED.author, \
                tags = EXCLUDED.tags, \
@@ -145,6 +148,7 @@ impl BlogRepository for PostgresBlogRepository {
         .bind(&post.title)
         .bind(&post.slug)
         .bind(&post.content)
+        .bind(&post.content_md)
         .bind(&post.summary)
         .bind(&post.author)
         .bind(&post.tags)

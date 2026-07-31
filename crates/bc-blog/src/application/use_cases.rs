@@ -9,7 +9,7 @@ use std::sync::Arc;
 use shared_kernel::{Datetime, PostUuid};
 use thiserror::Error;
 
-use super::dto::{BlogPostDTO, BlogPostSummaryDTO};
+use super::dto::{BlogPostDTO, BlogPostSummaryDTO, PostMarkdownDTO};
 use crate::domain::model::{BlogPost, BlogPostSummary, PostStatus};
 use crate::domain::repository::{BlogRepository, RepositoryError};
 
@@ -89,13 +89,40 @@ impl GetPostById {
     }
 }
 
-/// Command to create or replace a post, keyed by slug. `content_html` carries
-/// the already-rendered HTML (the domain stores HTML, not markdown).
+/// Fetch a post's Markdown source by slug (the `.md` crawler variants).
+///
+/// Separate from [`GetPostBySlug`] so the raw source is only ever loaded for
+/// the endpoint that actually serves it.
+pub struct GetPostMarkdown {
+    repository: Arc<dyn BlogRepository>,
+}
+
+impl GetPostMarkdown {
+    pub fn new(repository: Arc<dyn BlogRepository>) -> Self {
+        Self { repository }
+    }
+
+    /// # Errors
+    ///
+    /// [`UseCaseError::Repository`] if the persistence port fails.
+    pub async fn execute(&self, slug: &str) -> Result<Option<PostMarkdownDTO>, UseCaseError> {
+        Ok(self
+            .repository
+            .find_by_slug(slug)
+            .await?
+            .map(PostMarkdownDTO::from))
+    }
+}
+
+/// Command to create or replace a post, keyed by slug. Both renditions are
+/// stored: `content_html` is what the pages display, `content_md` the authored
+/// source the `.md` crawler variants serve.
 #[derive(Debug, Clone)]
 pub struct UpsertPostCommand {
     pub title: String,
     pub slug: String,
     pub content_html: String,
+    pub content_md: String,
     pub summary: String,
     pub author: String,
     pub tags: Vec<String>,
@@ -130,6 +157,7 @@ impl UpsertPost {
             title: cmd.title,
             slug: cmd.slug,
             content: cmd.content_html,
+            content_md: cmd.content_md,
             summary: cmd.summary,
             author: cmd.author,
             tags: cmd.tags,

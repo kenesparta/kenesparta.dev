@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bc_blog::application::use_cases::{
-    GetPostById, GetPostBySlug, ListPublishedPosts, PrunePosts, UpsertPost,
+    GetPostById, GetPostBySlug, GetPostMarkdown, ListPublishedPosts, PrunePosts, UpsertPost,
 };
 use bc_blog::domain::repository::BlogRepository;
 use sqlx::postgres::PgPoolOptions;
@@ -27,6 +27,8 @@ pub struct BlogUseCases {
     pub list_published: Arc<ListPublishedPosts>,
     pub get_by_slug: Arc<GetPostBySlug>,
     pub get_by_id: Arc<GetPostById>,
+    /// Crawler path — only the `/blog/<slug>.md` endpoint calls it.
+    pub get_markdown: Arc<GetPostMarkdown>,
     /// Write path — only the ingest bin calls it; the web server never does.
     pub upsert: Arc<UpsertPost>,
     /// Write path — only the ingest bin calls it (`--prune`).
@@ -52,6 +54,7 @@ pub async fn compose(config: &Configuration) -> Result<Container, Box<dyn std::e
         list_published: Arc::new(ListPublishedPosts::new(repository.clone())),
         get_by_slug: Arc::new(GetPostBySlug::new(repository.clone())),
         get_by_id: Arc::new(GetPostById::new(repository.clone())),
+        get_markdown: Arc::new(GetPostMarkdown::new(repository.clone())),
         upsert: Arc::new(UpsertPost::new(repository.clone())),
         prune: Arc::new(PrunePosts::new(repository)),
     };

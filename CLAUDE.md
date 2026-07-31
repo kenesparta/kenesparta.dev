@@ -64,7 +64,8 @@ do not recreate it.
 │       │   ├── configuration.rs           # env config (DATABASE_URL, required — fails fast)
 │       │   ├── composition.rs             # DI Container (PgPool + migrations → use cases)
 │       │   ├── http.rs                    # ServerState + server-fn handler
-│       │   ├── seo.rs                     # crawler endpoints: /sitemap.xml, /feed.xml (ssr-only)
+│       │   ├── seo.rs                     # crawler endpoints: /sitemap.xml, /feed.xml, /llms.txt,
+│       │   │                              #   /blog/<slug>.md + its rewrite middleware (ssr-only)
 │       │   ├── persistence/blog_postgres.rs   # PostgresBlogRepository (implements the port)
 │       │   └── app/                       # UI: app.rs (routing/shell), components/, pages/, constants.rs, api.rs (server fns)
 │       ├── migrations/       # SQLx migrations (embedded into the binary)
@@ -117,6 +118,10 @@ Posts use TOML frontmatter between `+++` fences (title, summary, date RFC 3339,
 optional slug/author/tags/status; status defaults to "draft"). The ingest CLI
 (`apps/backend/src/bin/ingest.rs`, feature `ingest`) renders markdown with
 pulldown-cmark and upserts by slug — idempotent, `post_id`/`created_at` preserved.
+Each post is stored twice: `content` (rendered HTML, what the pages display) and
+`content_md` (the body verbatim, what `/blog/<slug>.md` serves to agents). Posts
+ingested before `content_md` existed have it empty and 404 on the `.md` URL until
+re-ingested — after deploying that migration, re-run `make blog/publish`.
 Deleting a `.md` file does NOT delete its DB row; pass `PRUNE=1` (→ `--prune`)
 to also delete DB posts with no matching file, making the DB mirror `content/posts/`.
 
@@ -200,8 +205,17 @@ Routes are defined in `apps/backend/src/app.rs` using leptos_router:
 The blog routes use `SsrMode::Async` on purpose: the default out-of-order streaming ships a fallback plus an inert
 `<template>` swapped in by script, which is invisible to crawlers that do not execute JavaScript. Every page mounts
 one `PageMeta` component (`app/components/page_meta.rs`) — title, description, canonical, Open Graph — so no two URLs
-share metadata. Crawler endpoints live outside the Leptos router: `/sitemap.xml` and `/feed.xml` in `src/seo.rs`
-(Axum handlers, ssr-only), `robots.txt` in `public/`.
+share metadata. Crawler endpoints live outside the Leptos router: `/sitemap.xml`, `/feed.xml`, `/llms.txt` and the
+`/blog/<slug>.md` Markdown variants in `src/seo.rs` (Axum handlers, ssr-only), `robots.txt` in `public/`.
+
+`/llms.txt` follows llmstxt.org (H1, blockquote, H2 link lists) and links posts by their `.md` URL, so an agent
+following a link gets the authored Markdown instead of hydrated HTML. That variant is served from the `content_md`
+column (see *Blog authoring*); drafts and rows with empty `content_md` 404. Its URL needs a dynamic segment with a
+literal `.md` suffix, which matchit (axum's router) cannot express — "dynamic suffixes are not currently supported" —
+and `/blog/{slug}` is already the Leptos page route. So `seo::rewrite_markdown_suffix` rewrites `/blog/<slug>.md` to
+the internal `/blog-md/{slug}` **before** routing: it is layered on an outer `Router` that holds the real router as
+its `fallback_service`, because `Router::layer` runs *after* the match and would be too late. `robots.txt` disallows
+`/blog-md/` so the internal path is not indexed as a duplicate.
 
 The navigation bar (StickyNavBar) is conditionally rendered on all pages except the home page.
 
