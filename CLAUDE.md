@@ -22,6 +22,20 @@ do not recreate it.
 - **Web Server**: Axum 0.8.0
 - **Styling**: plain CSS — source in `style/parts/*.css`, concatenated by `make css` into the generated
   `style/main.css` bundle (no Sass); cargo-leptos minifies via lightningcss
+- **Logging**: `tracing` + `tracing-subscriber` emitting one JSON object per line on stdout
+  (`telemetry::init()`, called first thing by both bins), filtered by `RUST_LOG` (default `info`).
+  In production stdout ships to CloudWatch Logs (`/kenesparta/blog`, 7-day retention — personal-infra
+  AD-11), where Logs Insights auto-parses the JSON fields. `telemetry::access_log` (outermost
+  middleware) emits one INFO `"request"` event per page request — viewer IP + country/region/city,
+  method, public path, status, latency, user-agent, referer — skipping `/pkg/*` and favicon noise.
+  The IP arrives as `true-client-ip` (injected, spoof-proof, by a viewer-request CloudFront Function)
+  and the geo as `CloudFront-Viewer-*` headers (forwarded by a custom cache policy) — both from
+  personal-infra AD-12; locally they're absent and log as `-`. Geo values are percent-decoded;
+  city/region are best-effort and may be `-` even in prod. `TraceLayer` (tower-http) additionally
+  spans every request; its per-request events are DEBUG, so prod (`info`) adds only startup, errors
+  and 5xx failures while dev (`RUST_LOG=debug` in compose) shows spans and SQLx queries. Log with
+  fields (`tracing::info!(slug = %slug, "upserted")`), never interpolation; never log `DATABASE_URL`
+  or raw header maps
 - **Testing**: Playwright (end-to-end tests)
 - **Architecture**: DDD / hexagonal — a Cargo workspace with a library crate per Bounded Context (`crates/bc-*`), a
   `shared-kernel`, and a single binary (`apps/backend`) that hosts the Leptos app plus all adapters and wiring
@@ -66,6 +80,7 @@ do not recreate it.
 │       │   ├── http.rs                    # ServerState + server-fn handler
 │       │   ├── seo.rs                     # crawler endpoints: /sitemap.xml, /feed.xml, /llms.txt,
 │       │   │                              #   /blog/<slug>.md + its rewrite middleware (ssr-only)
+│       │   ├── telemetry.rs               # JSON tracing subscriber, shared by server + ingest bins
 │       │   ├── persistence/blog_postgres.rs   # PostgresBlogRepository (implements the port)
 │       │   └── app/                       # UI: app.rs (routing/shell), components/, pages/, constants.rs, api.rs (server fns)
 │       ├── migrations/       # SQLx migrations (embedded into the binary)

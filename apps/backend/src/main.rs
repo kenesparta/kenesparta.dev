@@ -14,6 +14,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use leptos::prelude::*;
     use leptos_axum::{LeptosRoutes, generate_route_list};
     use tower_http::compression::CompressionLayer;
+    use tower_http::trace::TraceLayer;
+
+    backend::telemetry::init();
 
     let config = configuration::Configuration::from_env()?;
     let container = composition::compose(&config).await?;
@@ -72,9 +75,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .fallback_service(router)
         .layer(axum::middleware::from_fn(
             backend::seo::rewrite_markdown_suffix,
-        ));
+        ))
+        // Both outside the rewrite (added after it) so they see the public
+        // URI, not the internal one. TraceLayer's per-request events are
+        // DEBUG — quiet under the prod `info` filter, visible in dev — except
+        // failures (5xx) at ERROR; it records no headers, so the CloudFront
+        // origin-verify secret can never land in the logs. The access log is
+        // outermost: one INFO event per page request with viewer IP + geo.
+        .layer(TraceLayer::new_for_http())
+        .layer(axum::middleware::from_fn(backend::telemetry::access_log));
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
+    tracing::info!(addr = %addr, "kenesparta.dev listening");
     axum::serve(listener, app.into_make_service()).await?;
 
     Ok(())

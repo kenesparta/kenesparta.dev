@@ -27,7 +27,11 @@ leptos_axum = "0.8.0"
 # Server-only: runtime, HTTP and the Postgres client.
 axum = { version = "0.8.0", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.7.0", features = ["compression-full"] }
+tower-http = { version = "0.7.0", features = ["compression-full", "trace"] }
+
+# Server-only: structured JSON logs on stdout, filtered by RUST_LOG.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # Runtime queries (query_as + FromRow derive) — we never use the query!
 # macros, so the Docker build stays free of DATABASE_URL / offline caches.
 # `macros` is needed anyway for migrate!(), which embeds migrations/*.sql

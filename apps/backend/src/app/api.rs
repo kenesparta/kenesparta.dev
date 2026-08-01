@@ -20,6 +20,7 @@ pub async fn get_published_posts(
         .list_published
         .execute(limit.unwrap_or(10))
         .await
+        .inspect_err(|error| tracing::error!(error = %error, "listing published posts failed"))
         .map_err(ServerFnError::new)
 }
 
@@ -31,5 +32,6 @@ pub async fn get_post_by_slug(slug: String) -> Result<Option<BlogPostDTO>, Serve
         .get_by_slug
         .execute(&slug)
         .await
+        .inspect_err(|error| tracing::error!(error = %error, slug = %slug, "loading post failed"))
         .map_err(ServerFnError::new)
 }

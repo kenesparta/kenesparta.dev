@@ -148,7 +148,10 @@ pub async fn post_markdown(State(state): State<ServerState>, Path(slug): Path<St
     let post = match state.container.blog.get_markdown.execute(&slug).await {
         Ok(Some(post)) => post,
         Ok(None) => return StatusCode::NOT_FOUND.into_response(),
-        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        Err(error) => {
+            tracing::error!(error = %error, slug = %slug, "loading post markdown failed");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
     };
 
     // Drafts are public nowhere else, so the .md variant must not leak them.
@@ -203,7 +206,10 @@ async fn published_posts(state: &ServerState) -> Result<Vec<BlogPostSummaryDTO>,
         .list_published
         .execute(i32::MAX)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        .map_err(|error| {
+            tracing::error!(error = %error, "listing published posts failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        })
 }
 
 fn text_response(content_type: &'static str, body: String) -> Response {

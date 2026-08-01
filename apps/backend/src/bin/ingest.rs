@@ -103,6 +103,8 @@ fn parse_post(path: &Path) -> Result<UpsertPostCommand, Box<dyn std::error::Erro
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    backend::telemetry::init();
+
     let mut dir = "content/posts".to_string();
     let mut prune = false;
     for arg in std::env::args().skip(1) {
@@ -131,7 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if paths.is_empty() {
         // Deliberately also skips --prune: an empty (or mistyped) content dir
         // must never wipe the whole table.
-        println!("no .md files in {dir} — nothing to do");
+        tracing::warn!(dir = %dir, "no .md files — nothing to do");
         return Ok(());
     }
 
@@ -145,18 +147,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .execute(cmd)
             .await
             .map_err(|e| format!("{}: {e}", path.display()))?;
-        println!("upserted {slug}");
+        tracing::info!(slug = %slug, "upserted");
         slugs.push(slug);
     }
 
     if prune {
         let pruned = container.blog.prune.execute(&slugs).await?;
         for slug in &pruned {
-            println!("pruned {slug}");
+            tracing::info!(slug = %slug, "pruned");
         }
-        println!("done: {} upserted, {} pruned", slugs.len(), pruned.len());
+        tracing::info!(upserted = slugs.len(), pruned = pruned.len(), "done");
     } else {
-        println!("done: {} post(s)", slugs.len());
+        tracing::info!(upserted = slugs.len(), "done");
     }
     Ok(())
 }

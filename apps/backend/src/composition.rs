@@ -47,6 +47,7 @@ pub async fn compose(config: &Configuration) -> Result<Container, Box<dyn std::e
     // Embedded migrations (apps/backend/migrations). Fail fast: an
     // unreachable/unmigratable DB must abort the deployment, not limp along.
     sqlx::migrate!().run(&pool).await?;
+    tracing::info!("postgres pool ready, migrations applied");
 
     let repository: Arc<dyn BlogRepository> = Arc::new(PostgresBlogRepository::new(pool));
 
