@@ -42,4 +42,18 @@ test.describe("trailing-slash normalization", () => {
     const res = await request.get(`${BASE}/blog`, { maxRedirects: 0 });
     expect(res.status()).toBe(200);
   });
+
+  // The normalizer must never emit a protocol-relative Location (`//host` or
+  // `/\host`), which browsers resolve off-site — an open redirect. Every
+  // redirect target has to stay a single-slash, same-origin absolute path.
+  for (const path of ["//evil.com/", "///evil.com/", "/\\evil.com/", "//evil.com//"]) {
+    test(`no open redirect for ${path}`, async ({ request }) => {
+      const res = await request.get(`${BASE}${path}`, { maxRedirects: 0 });
+      const location = res.headers()["location"] ?? "";
+      // Same-origin: starts with a single slash, and the char after it is not
+      // another slash or a backslash.
+      expect(location).toMatch(/^\/(?![/\\])/);
+      expect(location).not.toContain("evil.com/");
+    });
+  }
 });

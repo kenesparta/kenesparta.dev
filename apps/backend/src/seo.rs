@@ -179,15 +179,23 @@ pub async fn post_markdown(State(state): State<ServerState>, Path(slug): Path<St
 /// panic the worker inside the data resource. Normalizing first keeps every
 /// data route on the path that carries its dependencies. Runs ahead of
 /// [`rewrite_markdown_suffix`] so `/blog/<slug>.md/` normalizes before rewrite.
+///
+/// The redirect target is always a single-slash, same-origin absolute path.
+/// Trimming only the trailing slash is not enough: `//evil.com/` would yield
+/// `Location: //evil.com`, a protocol-relative URL browsers resolve off-site —
+/// an open redirect. Collapsing the leading slashes (and a leading backslash,
+/// which browsers fold to `/`) closes that.
 pub async fn redirect_trailing_slash(request: Request, next: Next) -> Response {
     let path = request.uri().path();
     if path.len() > 1 && path.ends_with('/') {
-        // All-slash paths (`//`, `///`) trim to empty — send those to root.
-        let trimmed = path.trim_end_matches('/');
-        let target = if trimmed.is_empty() { "/" } else { trimmed };
+        // Strip leading and trailing `/` and `\`, then re-prefix exactly one
+        // `/`. `//evil.com/` → `/evil.com` (same origin), `/blog/` → `/blog`,
+        // an all-slash path (`//`, `///`) → `/`.
+        let body = path.trim_matches(|c| c == '/' || c == '\\');
+        let target = format!("/{body}");
         let location = match request.uri().query() {
             Some(query) => format!("{target}?{query}"),
-            None => target.to_string(),
+            None => target,
         };
         return (StatusCode::PERMANENT_REDIRECT, [(header::LOCATION, location)]).into_response();
     }
