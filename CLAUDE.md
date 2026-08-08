@@ -101,7 +101,7 @@ do not recreate it.
 **Prerequisites:**
 - Rust toolchain per `rust-toolchain.toml` (1.97 + wasm32 target)
 - cargo-leptos: `cargo install cargo-leptos --locked`
-- Playwright deps (for tests): `cd apps/backend/end2end && npm install`
+- Playwright deps (for tests): `cd apps/backend/end2end && pnpm install`
 
 **Running the development server:**
 ```bash
@@ -295,7 +295,7 @@ Leptos package metadata lives in `apps/backend/Cargo.toml`:
 - `site-root = "target/kdevsite"`
 - `site-addr = "0.0.0.0:3000"`
 - `reload-port = 3001` (for hot-reload)
-- `end2end-cmd = "npx playwright test"`
+- `end2end-cmd = "pnpm exec playwright test"`
 
 ## Testing
 

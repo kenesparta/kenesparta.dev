@@ -46,7 +46,8 @@ Leptos App (Axum + Brotli)   →  Lightsail PostgreSQL (blog)
 ### For Testing
 
 - **Node.js**: v18+ (for Playwright)
-- **Playwright**: `cd apps/backend/end2end && npm install`
+- **pnpm**: the package manager for the Playwright suite (`corepack enable`, or install from pnpm.io)
+- **Playwright**: `cd apps/backend/end2end && pnpm install`
 
 ## Getting Started
 
