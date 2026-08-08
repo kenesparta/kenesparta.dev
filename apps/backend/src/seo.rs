@@ -167,6 +167,34 @@ pub async fn post_markdown(State(state): State<ServerState>, Path(slug): Path<St
     text_response("text/markdown; charset=utf-8", body)
 }
 
+/// Redirects any non-root path with a trailing slash to its slash-free form
+/// (`/blog/` → `/blog`) with a permanent, method-preserving 308, before routing.
+///
+/// Two reasons. Canonical hygiene: the site advertises one URL per page
+/// (per-page canonicals, sitemap, llms.txt), so a trailing-slash duplicate
+/// should collapse onto the canonical. And safety: Leptos's SSR matcher accepts
+/// a trailing slash, so `/blog/` resolves to the async blog route, but the Axum
+/// route generated for it is the slash-free `/blog` — the trailing-slash form
+/// would fall through to the context-less error handler and, before this,
+/// panic the worker inside the data resource. Normalizing first keeps every
+/// data route on the path that carries its dependencies. Runs ahead of
+/// [`rewrite_markdown_suffix`] so `/blog/<slug>.md/` normalizes before rewrite.
+pub async fn redirect_trailing_slash(request: Request, next: Next) -> Response {
+    let path = request.uri().path();
+    if path.len() > 1 && path.ends_with('/') {
+        // All-slash paths (`//`, `///`) trim to empty — send those to root.
+        let trimmed = path.trim_end_matches('/');
+        let target = if trimmed.is_empty() { "/" } else { trimmed };
+        let location = match request.uri().query() {
+            Some(query) => format!("{target}?{query}"),
+            None => target.to_string(),
+        };
+        return (StatusCode::PERMANENT_REDIRECT, [(header::LOCATION, location)]).into_response();
+    }
+
+    next.run(request).await
+}
+
 /// Rewrites `/blog/<slug>.md` to `/blog-md/<slug>` before routing.
 ///
 /// llms.txt asks for Markdown variants at the page URL plus `.md`, but matchit

@@ -10,12 +10,28 @@ use leptos::prelude::*;
 #[cfg(feature = "ssr")]
 use crate::composition::Container;
 
+/// Pull the DI container out of the reactive context.
+///
+/// The page router installs it (`leptos_routes_with_context`), but the error
+/// fallback (`file_and_error_handler`) does not. Leptos's SSR matcher treats a
+/// trailing slash as a match, so `/blog/` resolves to this data route yet is
+/// served through that context-less fallback (the generated Axum route is the
+/// slash-free `/blog`). `expect_context` would panic there, letting an
+/// unauthenticated `GET /blog/` crash a worker thread; returning an error
+/// degrades that request instead of taking the task down.
+#[cfg(feature = "ssr")]
+fn container() -> Result<Container, ServerFnError> {
+    use_context::<Container>().ok_or_else(|| {
+        tracing::error!("dependency container missing from request context");
+        ServerFnError::new("service unavailable")
+    })
+}
+
 #[server(GetPublishedPosts, "/api")]
 pub async fn get_published_posts(
     limit: Option<i32>,
 ) -> Result<Vec<BlogPostSummaryDTO>, ServerFnError> {
-    let container = expect_context::<Container>();
-    container
+    container()?
         .blog
         .list_published
         .execute(limit.unwrap_or(10))
@@ -26,8 +42,7 @@ pub async fn get_published_posts(
 
 #[server(GetPostBySlug, "/api")]
 pub async fn get_post_by_slug(slug: String) -> Result<Option<BlogPostDTO>, ServerFnError> {
-    let container = expect_context::<Container>();
-    container
+    container()?
         .blog
         .get_by_slug
         .execute(&slug)

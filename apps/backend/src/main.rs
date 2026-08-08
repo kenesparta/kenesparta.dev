@@ -76,6 +76,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(axum::middleware::from_fn(
             backend::seo::rewrite_markdown_suffix,
         ))
+        // Collapse trailing slashes before routing (outside the rewrite, so it
+        // sees the public URI). `/blog/` otherwise reaches the context-less
+        // error handler and the data resource panics the worker — a crafted
+        // URL must not take a thread down.
+        .layer(axum::middleware::from_fn(
+            backend::seo::redirect_trailing_slash,
+        ))
         // Both outside the rewrite (added after it) so they see the public
         // URI, not the internal one. TraceLayer's per-request events are
         // DEBUG — quiet under the prod `info` filter, visible in dev — except
