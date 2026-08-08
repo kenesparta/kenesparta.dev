@@ -62,6 +62,12 @@ impl GetPostBySlug {
             .repository
             .find_by_slug(slug)
             .await?
+            // Only published posts are public. `find_by_slug` is a general
+            // lookup by key (it also backs the `.md` variant, which gates on
+            // status in its handler), so the page's visibility policy lives
+            // here: a draft slug must read as "not found", not render its body
+            // for anyone who guesses the slug.
+            .filter(|post| post.status == PostStatus::Published)
             .map(BlogPostDTO::from))
     }
 }
@@ -190,5 +196,103 @@ impl PrunePosts {
     /// [`UseCaseError::Repository`] if the persistence port fails.
     pub async fn execute(&self, keep: &[String]) -> Result<Vec<String>, UseCaseError> {
         Ok(self.repository.delete_not_in(keep).await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::model::BlogPost;
+
+    /// In-memory `BlogRepository` for the application-layer tests. It returns
+    /// posts verbatim, drafts included — exactly like the real adapter's
+    /// `find_by_slug`, which is what makes the visibility policy the use case's
+    /// job to enforce.
+    struct InMemoryRepo {
+        posts: Vec<BlogPost>,
+    }
+
+    #[async_trait::async_trait]
+    impl BlogRepository for InMemoryRepo {
+        async fn list_published(&self, limit: i32) -> Result<Vec<BlogPost>, RepositoryError> {
+            Ok(self
+                .posts
+                .iter()
+                .filter(|post| post.status == PostStatus::Published)
+                .take(limit.max(0) as usize)
+                .cloned()
+                .collect())
+        }
+
+        async fn find_by_slug(&self, slug: &str) -> Result<Option<BlogPost>, RepositoryError> {
+            Ok(self.posts.iter().find(|post| post.slug == slug).cloned())
+        }
+
+        async fn find_by_id(&self, post_id: &str) -> Result<Option<BlogPost>, RepositoryError> {
+            Ok(self.posts.iter().find(|post| post.post_id == post_id).cloned())
+        }
+
+        async fn upsert(&self, _post: &BlogPost) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+
+        async fn delete_not_in(&self, _keep: &[String]) -> Result<Vec<String>, RepositoryError> {
+            Ok(Vec::new())
+        }
+    }
+
+    /// Drive a future to completion without a runtime: the in-memory repository
+    /// never yields `Pending`, so the first poll is always `Ready`. Keeps this
+    /// crate free of a runtime dependency (`tokio` is forbidden here).
+    fn block_on<F: std::future::Future>(future: F) -> F::Output {
+        use std::task::{Context, Poll, Waker};
+        let mut future = std::pin::pin!(future);
+        let mut cx = Context::from_waker(Waker::noop());
+        loop {
+            if let Poll::Ready(output) = future.as_mut().poll(&mut cx) {
+                return output;
+            }
+        }
+    }
+
+    fn post(slug: &str, status: PostStatus) -> BlogPost {
+        let mut post = BlogPost::new(
+            "Title".to_owned(),
+            slug.to_owned(),
+            "<p>body</p>".to_owned(),
+            "# body".to_owned(),
+            "summary".to_owned(),
+            "ken".to_owned(),
+            Vec::new(),
+        );
+        post.status = status;
+        post
+    }
+
+    fn use_case(posts: Vec<BlogPost>) -> GetPostBySlug {
+        GetPostBySlug::new(Arc::new(InMemoryRepo { posts }))
+    }
+
+    // Regression: a draft must never be served by slug (it used to render its
+    // full body at /blog/<slug> — only the .md variant was guarded).
+    #[test]
+    fn get_by_slug_hides_drafts() {
+        let uc = use_case(vec![post("secret", PostStatus::Draft)]);
+        let result = block_on(uc.execute("secret")).expect("use case ok");
+        assert!(result.is_none(), "a draft slug must read as not found");
+    }
+
+    #[test]
+    fn get_by_slug_returns_published() {
+        let uc = use_case(vec![post("hello", PostStatus::Published)]);
+        let result = block_on(uc.execute("hello")).expect("use case ok");
+        assert_eq!(result.map(|dto| dto.slug).as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn get_by_slug_missing_is_none() {
+        let uc = use_case(vec![post("hello", PostStatus::Published)]);
+        let result = block_on(uc.execute("nope")).expect("use case ok");
+        assert!(result.is_none());
     }
 }
