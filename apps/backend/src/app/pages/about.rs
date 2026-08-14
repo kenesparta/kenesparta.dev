@@ -1,4 +1,5 @@
 use crate::app::components::{PageMeta, PersonJsonLd, SocialLinks, Tags};
+use crate::app::constants::EMAIL;
 use leptos::prelude::*;
 use leptos::{IntoView, component, view};
 
@@ -139,6 +140,14 @@ pub fn About() -> impl IntoView {
                         })
                         .collect_view()}
                 </ul>
+            </section>
+
+            <section class="about-section">
+                <h2>"Contact"</h2>
+                <p class="about-contact">
+                    "Email: "
+                    <a href=format!("mailto:{EMAIL}")>{EMAIL}</a>
+                </p>
             </section>
         </div>
     }

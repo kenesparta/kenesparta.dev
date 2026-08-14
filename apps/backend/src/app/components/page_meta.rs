@@ -1,5 +1,5 @@
 use crate::app::constants::{
-    BUCKET_URL, CODEBERG_URL, GITHUB_URL, ICON_URL, LINKEDIN_URL, SITE_URL,
+    BUCKET_URL, CODEBERG_URL, EMAIL, GITHUB_URL, ICON_URL, LINKEDIN_URL, SITE_URL,
 };
 use leptos::prelude::*;
 use leptos_meta::{Link, Meta, Title};
@@ -53,6 +53,7 @@ pub fn PersonJsonLd() -> impl IntoView {
         "jobTitle": "Senior Software Engineer",
         "url": SITE_URL,
         "image": format!("{BUCKET_URL}/img/photo.webp"),
+        "email": EMAIL,
         "sameAs": [GITHUB_URL, CODEBERG_URL, LINKEDIN_URL],
     }));
     view! { <script type="application/ld+json" inner_html=person></script> }

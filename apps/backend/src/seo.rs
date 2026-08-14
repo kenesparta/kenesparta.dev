@@ -13,7 +13,7 @@ use bc_blog::application::dto::BlogPostSummaryDTO;
 use bc_blog::domain::model::PostStatus;
 use chrono::DateTime;
 
-use crate::app::constants::{BLOG_DESCRIPTION, META_DESCRIPTION, SITE_URL};
+use crate::app::constants::{BLOG_DESCRIPTION, EMAIL, META_DESCRIPTION, SITE_URL};
 use crate::http::ServerState;
 
 /// Routable pages that exist independent of database content, as
@@ -131,6 +131,10 @@ pub async fn llms_txt(State(state): State<ServerState>) -> Response {
     for (path, label, description) in PAGES {
         body.push_str(&format!("- [{label}]({SITE_URL}{path}): {description}\n"));
     }
+
+    body.push_str(&format!(
+        "\n## Contact\n\n- [Email](mailto:{EMAIL}): {EMAIL} — the way to reach me.\n"
+    ));
 
     body.push_str("\n## Optional\n\n");
     body.push_str(&format!(

@@ -1,5 +1,5 @@
-use super::icons::{CodebergIcon, GithubIcon};
-use crate::app::constants::{BUCKET_URL, CODEBERG_URL, GITHUB_URL, LINKEDIN_URL};
+use super::icons::{CodebergIcon, GithubIcon, MailIcon};
+use crate::app::constants::{BUCKET_URL, CODEBERG_URL, EMAIL, GITHUB_URL, LINKEDIN_URL};
 use leptos::prelude::*;
 use leptos::{IntoView, component, view};
 
@@ -8,13 +8,22 @@ fn SocialLink(
     #[prop(into)] href: String,
     #[prop(into)] aria_label: String,
     #[prop(optional, into)] download: Option<String>,
+    /// Whether the link opens a new tab. Off for `mailto:`, which hands the
+    /// URL to the mail client and would leave an empty tab behind.
+    #[prop(default = true)]
+    new_tab: bool,
     children: Children,
 ) -> impl IntoView {
+    let (target, rel) = if new_tab {
+        (Some("_blank"), Some("noopener noreferrer"))
+    } else {
+        (None, None)
+    };
     view! {
         <a
             href=href
-            target="_blank"
-            rel="noopener noreferrer"
+            target=target
+            rel=rel
             download=download
             class="social-links__element"
             aria-label=aria_label
@@ -27,6 +36,7 @@ fn SocialLink(
 #[component]
 pub fn SocialLinks() -> impl IntoView {
     let resume = format!("{}/cv/ken_esparta_cv.pdf", BUCKET_URL);
+    let email = format!("mailto:{EMAIL}");
     view! {
         <div class="social-links">
             <SocialLink href=GITHUB_URL aria_label="Visit my GitHub profile">
@@ -47,6 +57,14 @@ pub fn SocialLinks() -> impl IntoView {
                 >
                     <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
                 </svg>
+            </SocialLink>
+
+            <SocialLink
+                href=email
+                new_tab=false
+                aria_label=format!("Email me at {EMAIL}")
+            >
+                <MailIcon/>
             </SocialLink>
 
             <SocialLink

@@ -12,6 +12,10 @@ pub const GITHUB_URL: &str = "https://github.com/kenesparta";
 pub const CODEBERG_URL: &str = "https://codeberg.org/kenesparta";
 pub const LINKEDIN_URL: &str = "https://linkedin.com/in/kenesparta";
 
+// Contact address: rendered as a `mailto:` social link, shown verbatim on
+// /about, and declared as `email` in the Person JSON-LD.
+pub const EMAIL: &str = "kenesparta@pm.me";
+
 pub const GLOBAL_FONTS: &[&str] = &[
     "solway-v19-latin-regular.woff2",
     "solway-v19-latin-700.woff2",
