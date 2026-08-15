@@ -8,17 +8,30 @@
     list-style: none;
     position: relative;
     margin: 0;
-    padding-inline-start: 1.5rem;
+    padding-inline-start: var(--timeline-indent);
+
+    --timeline-indent: 1.5rem;
+    --timeline-dot: 10px;
+    --timeline-rail: 2px;
+    /* Shared with .timeline-title so the dot can be centered on the title's
+       first line at every viewport, instead of a magic offset that only holds
+       at one font size. */
+    --timeline-title-size: clamp(1.15rem, 3.5vw, 1.4rem);
+    --timeline-title-leading: 1.25;
+    --timeline-dot-top: calc(
+        (var(--timeline-title-size) * var(--timeline-title-leading) - var(--timeline-dot)) / 2
+    );
 }
 
-/* The vertical line. */
+/* The vertical line — centered under the dots, which are the anchor the eye
+   actually reads at the left margin. */
 .timeline::before {
     content: "";
     position: absolute;
-    top: 0.4rem;
+    top: var(--timeline-dot-top);
     bottom: 0.4rem;
-    left: 0;
-    width: 2px;
+    left: calc((var(--timeline-dot) - var(--timeline-rail)) / 2);
+    width: var(--timeline-rail);
     background-color: var(--accent-color);
 }
 
@@ -31,22 +44,23 @@
     padding-bottom: 0;
 }
 
-/* Dot centered on the line, aligned with the entry title. */
+/* Dot flush with the page column's left edge — the same line the header brand
+   starts on — and vertically centered on the entry title. */
 .timeline-entry::before {
     content: "";
     position: absolute;
-    left: calc(-1.5rem - 4px);
-    top: 0.4rem;
-    width: 10px;
-    height: 10px;
+    left: calc(-1 * var(--timeline-indent));
+    top: var(--timeline-dot-top);
+    width: var(--timeline-dot);
+    height: var(--timeline-dot);
     border-radius: 50%;
     background-color: var(--primary-color);
 }
 
 .timeline-title {
     color: var(--secondary-color);
-    font-size: clamp(1.15rem, 3.5vw, 1.4rem);
-    line-height: 1.25;
+    font-size: var(--timeline-title-size);
+    line-height: var(--timeline-title-leading);
 }
 
 .timeline-meta {

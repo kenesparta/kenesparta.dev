@@ -7,14 +7,20 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem 1rem;
-    padding: 0.5rem clamp(0.75rem, 3vw, 1.25rem);
+    /* No inline padding: the bar lives inside <main>, which already supplies the
+       page gutter. Adding its own would indent the brand past the content below. */
+    padding: 0.5rem 0;
     margin-bottom: clamp(1rem, 3vw, 1.5rem);
     background-color: var(--background-color);
     border-bottom: 1px solid var(--accent-color);
 }
 
 .sticky-nav-bar .nav-links {
-    margin: 0;
+    /* Pull the last pill's own padding into the gutter so the link *text* lines
+       up with the page column's right edge, the way the brand does on the left.
+       Only the hover/active background reaches into the gutter, and 0.9rem is
+       always narrower than main's, so nothing overflows the viewport. */
+    margin: 0 -0.9rem 0 0;
 }
 
 .sticky-nav-bar__brand {
@@ -57,6 +63,12 @@
         align-items: center;
         justify-content: center;
         gap: 0.35rem;
-        padding: 0.5rem 0.75rem;
+        padding: 0.5rem 0;
+    }
+
+    /* Stacked and centered here — the optical pull would just push the row
+       off-center. */
+    .sticky-nav-bar .nav-links {
+        margin-right: 0;
     }
 }
