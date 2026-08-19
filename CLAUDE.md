@@ -348,6 +348,29 @@ builds the image and pushes `ghcr.io/kenesparta/kenespartadev:vX.Y.Z` + `:latest
 repo's own `GITHUB_TOKEN` — no AWS credentials, no OIDC role, no Terraform. The host's deploy timer picks up the
 moved `latest` within ~10 minutes; there is nothing to watch in AWS. `audit.yml` runs dependency audits.
 
+**No build cache, deliberately.** The workflow carried `cache-from`/`cache-to: type=gha` until it was measured on
+the v0.4.1 run: ~205s per build (40% of an 8m29s run, 87.5s of it just "preparing build cache for export") spent
+writing 3.2 GB, for **zero** cache hits — the log showed all 525 `Compiling` lines either way. The cause is scoping.
+Actions caches are keyed per git ref, and this workflow only triggers on tags, so every run wrote its cache under
+`refs/tags/vX.Y.Z` — a scope the next tag's run can never restore from. It was a write-only cache by construction.
+Removing it takes the build to ~5m with nothing lost.
+
+Fixing only the backend would not buy much either. `type=registry` cache is not ref-scoped, so it would at least
+persist across tags, but `COPY . .` in the Dockerfile sits above `RUN cargo leptos build`: every commit invalidates
+the compile layer, and the only restorable layers left are `rustup target add` and the cargo-leptos install, ~7s
+combined. A cache is worth reinstating only alongside a cacheable dependency layer (`cargo-chef`) that keys the
+~500 third-party crates on `Cargo.lock` — which has to cook twice here, once for the native `release` build and once
+for `wasm32-unknown-unknown` / `wasm-release`.
+
+**Where the time goes** (v0.4.1, 8m29s total, before the cache removal):
+- `cargo leptos build --release` — 286s: 212s the native SSR `release` build, 73s the wasm hydrate artifact
+- exporting to GitHub Actions Cache — 205s (now removed)
+- `rustup target add wasm32`, the cargo-leptos install and the GHCR push — ~13s combined
+
+The `debug = "line-tables-only"` win under *Compile Times* does not apply to CI, which builds `--release` with debug
+info already off. Of those three optimizations only `-Zthreads` would bite into the 212s native build, at the cost
+of putting nightly in the release image.
+
 **Cost:** the $12/mo Lightsail instance is shared across all personal-infra projects; CloudFront, S3 and the backup
 bucket are pay-per-use. No ECR, no managed database.
 
