@@ -172,6 +172,69 @@ cargo leptos end-to-end          # Debug mode
 cargo leptos end-to-end --release # Release mode
 ```
 
+### Compile Times
+
+Source: *How to decrease your Rust compile times by 50%* (Let's Get Rusty,
+https://www.youtube.com/watch?v=vFp4IbC2aZ0). `cargo build` runs in three stages — the
+front end (parse, type check, borrow check), code generation (LLVM lowers the IR into
+object files), then linking. Each optimization below targets a different stage, and the
+video measures ~47% off a clean build and ~46% off a rebuild with all three stacked.
+
+**1. Less debug information — applied, stable, no caveats.** Already in the root
+`Cargo.toml`:
+
+```toml
+[profile.dev]
+debug = "line-tables-only"
+```
+
+Cargo defaults `dev` to `debug = true`; emitting full DWARF and linking it into every
+artifact is the largest avoidable cost of a debug build. `line-tables-only` keeps file
+names and line numbers, so panics still name the right source line and backtraces stay
+readable — the only loss is variable inspection in a step-through debugger session.
+The video measures ~9% off a clean build and ~21% off a rebuild. This is the only one of
+the three that runs on the pinned stable toolchain, which is why it is the one enabled.
+
+**2. Parallel front end — nightly, not enabled.** The front end has historically run on
+a single core regardless of how many the machine has (codegen was already parallel
+across codegen units). `-Zthreads` parallelizes it:
+
+```toml
+# .cargo/config.toml
+[build]
+rustflags = ["-Zthreads=8"]
+```
+
+The video settles on 8 threads as the speed/memory balance; stacked on #1 it measures
+~33% off both clean builds and rebuilds, and it helps CI clean builds as much as local
+ones. `-Z` flags are nightly-only while `rust-toolchain.toml` pins 1.97 stable, so this
+needs `cargo +nightly` — and because cargo-leptos shells out to cargo, the override has
+to reach that child process (`RUSTUP_TOOLCHAIN=nightly cargo leptos watch`). Unlike #3
+this flag is target-agnostic, so it is safe for the wasm artifact.
+
+**3. Cranelift code generation — nightly, NOT usable here as written.** Cranelift
+optimizes less than LLVM and emits machine code faster, which is the right trade for a
+dev build:
+
+```toml
+# .cargo/config.toml
+# first: rustup component add rustc-codegen-cranelift-preview --toolchain nightly
+[unstable]
+codegen-backend = true            # unstable flag gating the profile key below
+
+[profile.dev]
+codegen-backend = "cranelift"     # dev only — release stays on LLVM
+```
+
+The catch for this repo: cargo-leptos also builds a `wasm32-unknown-unknown` hydrate
+artifact, and cranelift's support matrix has no wasm32 target. `[profile.dev]` covers
+both the SSR bin and the hydrate lib, so setting it there breaks `cargo leptos watch`.
+Enabling it would mean scoping cranelift to the server half — point cargo-leptos's
+`bin-profile-dev` at a cranelift-enabled profile and leave `lib-profile-dev` on the
+stock `dev` profile. Two further caveats: cranelift can fail outright on code LLVM
+accepts (usually low-level CPU intrinsics — fall back to LLVM for that build), and on
+macOS it does not support unwinding, so it forces `-Cpanic=abort`.
+
 ### Docker
 
 **Building the Docker image:**

@@ -64,6 +64,14 @@ serde_json = "1"
 thiserror = "2"
 uuid = { version = "1", features = ["serde", "v4", "js"] }
 
+# Dev profile. `debug = true` is cargo's default here: rustc emits full DWARF and
+# the linker stitches it into every artifact, which is the largest avoidable cost
+# of a debug build. "line-tables-only" keeps file names and line numbers, so
+# panics and backtraces still name the right source line; only a step-through
+# debugger session loses variable info. See "Compile times" in CLAUDE.md.
+[profile.dev]
+debug = "line-tables-only"
+
 # Profile for the hydration wasm artifact (used by cargo-leptos in release).
 [profile.wasm-release]
 inherits = "release"
