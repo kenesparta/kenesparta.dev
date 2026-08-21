@@ -1,4 +1,4 @@
-FROM rust:1.97-bookworm AS site-builder
+FROM rust:1.98-bookworm AS site-builder
 
 RUN rustup target add wasm32-unknown-unknown
 # cargo-leptos 0.2.46 bundles the wasm-bindgen CLI 0.2.104, which MUST match the
