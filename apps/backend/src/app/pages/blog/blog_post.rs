@@ -38,7 +38,9 @@ pub fn BlogPost() -> impl IntoView {
                                 .into_any()
                         }
 
-                        Err(e) => {
+                        // The error is logged server-side (api.rs) and its
+                        // text is never shown: it could describe the database.
+                        Err(_) => {
                             #[cfg(feature = "ssr")]
                             crate::app::set_response_status(
                                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -47,7 +49,7 @@ pub fn BlogPost() -> impl IntoView {
                                 <Title text="Error"/>
                                 <div class="error">
                                     <h1>"Error"</h1>
-                                    <p>"Error loading post: " {e.to_string()}</p>
+                                    <p>"This post could not be loaded right now. Please try again later."</p>
                                     <GoBack go_to="blog" text="Back to Blog"/>
                                 </div>
                             }

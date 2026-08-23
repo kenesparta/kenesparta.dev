@@ -18,10 +18,16 @@ pub fn BlogList() -> impl IntoView {
                         Ok(posts) => {
                             view! { <BlogPostList posts=posts/> }.into_any()
                         }
-                        Err(e) => {
+                        // Logged server-side (api.rs); the text never reaches
+                        // the page — it could describe the database.
+                        Err(_) => {
+                            #[cfg(feature = "ssr")]
+                            crate::app::set_response_status(
+                                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                            );
                             view! {
                                 <div class="error">
-                                    <p>"Error loading posts: " {e.to_string()}</p>
+                                    <p>"The posts could not be loaded right now. Please try again later."</p>
                                 </div>
                             }.into_any()
                         }

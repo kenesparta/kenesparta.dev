@@ -184,6 +184,35 @@ bumped SHA is only as trustworthy as the release behind it. When a
 `publish-image` change needs a new action, add it to the allow-list pattern
 before tagging, or the release will fail closed.
 
+### SEC-005 — Raw database errors were rendered to visitors
+
+**Severity:** Medium · **Status:** Fixed 2026-08-23 · **Where:**
+`apps/backend/src/app/api.rs`, `app/pages/blog/{blog_post,blog_list}.rs`
+
+**Finding.** A repository failure surfaced as
+`RepositoryError::Infrastructure(sqlx_err.to_string())`, travelled through
+`ServerFnError::new(error)` and was rendered on the page
+(`"Error loading post: " {e.to_string()}`) and in the server-function JSON —
+Postgres/SQLx wording ("error returned from database: relation … does not
+exist", pool timeouts) shown to any visitor.
+
+**Change.** The server functions map every use-case failure to one constant,
+`service unavailable`; the full error keeps going to the server log
+(`tracing::error!`) and nowhere else. The two pages render a generic message
+and no longer interpolate the error at all — belt and braces should a future
+server function leak again. The blog list error branch now also sets HTTP 500
+(it returned 200 before), matching the post page.
+
+**Verification.** `api.rs` regression tests drive the real server functions
+against a repository that fails with Postgres-flavoured text, inside a reactive
+owner carrying the DI container: the client-visible message must contain
+`service unavailable` and must not contain the database wording. Reverting the
+`map_err` makes the test fail ("database detail leaked"), so the test does
+catch the bug it guards against.
+
+**Follow-ups.** None. If a new server function is added, route its errors
+through the same constant.
+
 ## Open findings (audit of 2026-08-23)
 
 Found during the same audit, not yet addressed. Each gets its id now so the fix
@@ -192,7 +221,6 @@ can reference it; move an item into *Entries* when it is fixed or accepted.
 | Id | Sev. | Finding | Where | Fix |
 |---|---|---|---|---|
 | SEC-004 | Medium | No security response headers anywhere in the chain — verified live (`HTTP/2 200`, only `content-type` and `vary`). The app sets none, Caddy only gates on `X-Origin-Verify`, the blog CloudFront distribution has no response-headers policy. | `apps/backend/src/main.rs` (the app owns its markup, so set them here) | `tower_http::set_header::SetResponseHeaderLayer` (feature `set-header`) for `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `X-Frame-Options: DENY`, `Permissions-Policy`. CSP needs Leptos nonce support for the hydration and JSON-LD inline scripts — start as `Content-Security-Policy-Report-Only`. |
-| SEC-005 | Medium | Raw database errors are rendered to visitors: `RepositoryError::Infrastructure(sqlx_err.to_string())` travels through `ServerFnError::new(error)` into `"Error loading post: " {e.to_string()}`. | `persistence/blog_postgres.rs:52` → `app/api.rs:40,51` → `app/pages/blog/blog_post.rs:50`, `blog_list.rs:24` | Keep the `tracing::error!`; return an opaque `ServerFnError::new("service unavailable")` and render a generic message. |
 | SEC-006 | Medium | Docker trust anchors are mutable: the cargo-leptos installer is `curl \| sh` with no hash (the script itself embeds SHA-256s for the tarballs it downloads, so pinning the script closes the gap); base images are referenced by tag. | `Dockerfile:1,7,19`, `Dockerfile.dev` | Verify the installer against `sha256 d12461e2fd1be38e43dcf4b6ba43abf3f8ddf2689c06c2b0aa8bf499c0b796ee` (v0.2.46, as of 2026-08-23) before piping to `sh`; pin `rust:1.98-bookworm@sha256:e70e2eec3d495fd5c8e0be74adda86507dfac7f51a724fbf9813ff59b2b247c7` and `gcr.io/distroless/cc-debian12@sha256:e5d81ddde149641e2a9ba55be4545bc125c67de07508b03ba4c22e6eb0ded5aa`; let Dependabot move the digests. |
 | SEC-008 | Low | No tag ruleset and release tags are lightweight (unsigned); pushing any `v*` tag is a production deploy. Commits are 100 % signed and GitHub-verified, tags are not. | repo settings, release process | Tag ruleset restricting `v*` to the owner; `git tag -s`. |
 | SEC-009 | Low | The dev compose publishes Postgres (`blog:blog`) and ports 3000/3001 on all interfaces. | `docker-compose.dev.yml` | Prefix the port mappings with `127.0.0.1:`. |
