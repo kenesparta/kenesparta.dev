@@ -5,7 +5,9 @@
 # what makes a release go live. Nothing here touches AWS: no ECR, no OIDC
 # role, no Terraform (personal-infra spec AD-10, Phase 5).
 #
-# Publish a version:  git tag v1.0.0 && git push origin v1.0.0
+# Publish a version (signed, annotated — the repo sets tag.gpgSign, and a tag
+# ruleset guards v*; SECURITY.md SEC-008):
+#   git tag v1.0.0 -m v1.0.0 && git push origin v1.0.0
 
 # Actions are pinned to full commit SHAs, never to tags (SECURITY.md SEC-003):
 # a tag can be moved to a malicious commit by whoever controls the action's

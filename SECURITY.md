@@ -266,19 +266,105 @@ setup is CloudFront/Caddy in front. If leptos ever adds a second inline-script
 mechanism, the nonce covers it only if the framework stamps it; the e2e suite
 would catch that as a violation.
 
-## Open findings (audit of 2026-08-23)
+### SEC-006 — Mutable trust anchors in the Docker builds
 
-Found during the same audit, not yet addressed. Each gets its id now so the fix
-can reference it; move an item into *Entries* when it is fixed or accepted.
+**Severity:** Medium · **Status:** Fixed 2026-08-23 · **Where:** `Dockerfile`, `Dockerfile.dev`
 
-| Id | Sev. | Finding | Where | Fix |
-|---|---|---|---|---|
-| SEC-006 | Medium | Docker trust anchors are mutable: the cargo-leptos installer is `curl \| sh` with no hash (the script itself embeds SHA-256s for the tarballs it downloads, so pinning the script closes the gap); base images are referenced by tag. | `Dockerfile:1,7,19`, `Dockerfile.dev` | Verify the installer against `sha256 d12461e2fd1be38e43dcf4b6ba43abf3f8ddf2689c06c2b0aa8bf499c0b796ee` (v0.2.46, as of 2026-08-23) before piping to `sh`; pin `rust:1.98-bookworm@sha256:e70e2eec3d495fd5c8e0be74adda86507dfac7f51a724fbf9813ff59b2b247c7` and `gcr.io/distroless/cc-debian12@sha256:e5d81ddde149641e2a9ba55be4545bc125c67de07508b03ba4c22e6eb0ded5aa`; let Dependabot move the digests. |
-| SEC-008 | Low | No tag ruleset and release tags are lightweight (unsigned); pushing any `v*` tag is a production deploy. Commits are 100 % signed and GitHub-verified, tags are not. | repo settings, release process | Tag ruleset restricting `v*` to the owner; `git tag -s`. |
-| SEC-009 | Low | The dev compose publishes Postgres (`blog:blog`) and ports 3000/3001 on all interfaces. | `docker-compose.dev.yml` | Prefix the port mappings with `127.0.0.1:`. |
-| SEC-010 | Low | `.dockerignore` does not exclude `secrets/` (encrypted, but any `*.dec*` left behind would be copied into the builder layer) or `.claude/` (≈2 200 files). | `.dockerignore` | Add `secrets/` and `.claude/`. |
-| SEC-011 | Low | The publish tunnel's control socket is a fixed path in world-writable `/tmp`; if it pre-exists, ssh silently disables multiplexing and the `trap` can no longer close the tunnel, leaving production Postgres forwarded on `:5433` after `make` exits. Host keys are TOFU (`accept-new`). | `Makefile` (`TUNNEL_SOCK`) | Put the socket under `$(HOME)/.ssh/` or a `mktemp -d`; pre-seed `known_hosts` and use `StrictHostKeyChecking=yes`. |
-| SEC-012 | Low | `get_published_posts(limit)` is a public server function with an unclamped limit (`i32::MAX` returns the whole table). The table is tiny today. | `apps/backend/src/app/api.rs:31` | `.clamp(1, 100)` server-side. |
+**Finding.** Both stages pulled by tag (`rust:1.98-bookworm`, distroless `cc-debian12`) — tags any
+registry compromise can move — and the cargo-leptos installer was `curl | sh` with no verification.
+
+**Change.** Both `FROM`s carry tag **and** digest (Dependabot's docker ecosystem bumps them
+together); `Dockerfile.dev` now uses the same digest-pinned base as the production builder. The
+installer is downloaded to a file, verified against its pinned sha256
+(`d12461e2…b796ee`, v0.2.46), and only then run — the script itself embeds a sha256 per platform
+tarball, so the pin extends the chain of custody to the cargo-leptos binary. Bumping cargo-leptos
+now means re-pinning this hash alongside the wasm-bindgen version (the comment says so in place).
+
+**Verification.** A probe image built from the exact `FROM @digest` + installer instructions:
+digest pull, `sha256sum -c`, install and `cargo leptos --version` all succeed; the distroless
+digest pulls. (Build log in the entry's commit message context; the instructions are byte-identical
+to the Dockerfile's.)
+
+### SEC-008 — Release tags were unprotected and unsigned
+
+**Severity:** Low · **Status:** Fixed 2026-08-23 · **Where:** GitHub ruleset, repo-local git config
+
+**Finding.** Pushing any `v*` tag deploys to production within ~10 minutes, yet any write-scoped
+credential could create one, and the existing tags were lightweight (unsigned) — the only
+unauthenticated link in an otherwise 100 %-signed history.
+
+**Change.** GitHub ruleset `protect-release-tags` (id 21245040, active): creating, moving or
+deleting `refs/tags/v*` is restricted to repository admins. Locally, `tag.gpgSign = true` in this
+repo's git config, so `git tag vX.Y.Z -m vX.Y.Z` produces a signed annotated tag (the `-m` is now
+required); CLAUDE.md and the workflow header document the new one-liner.
+
+**Verification.** Ruleset readback shows `enforcement=active`, admin bypass
+(`current_user_can_bypass: always` — the owner's release flow keeps working); `git config
+tag.gpgSign` → true. The signing itself rides the same key every commit already uses.
+
+### SEC-009 — Dev containers published ports on every interface
+
+**Severity:** Low · **Status:** Fixed 2026-08-23 · **Where:** `docker-compose.dev.yml`, `docker-compose.yml`
+
+**Finding.** `"5432:5432"` (Postgres, `blog`/`blog`), `"3000:3000"`, `"3001:3001"` bind 0.0.0.0 —
+on a laptop that means the coffee-shop LAN can reach the dev database with known credentials.
+
+**Change.** Every published port is now `127.0.0.1:`-prefixed, including the root compose's
+smoke-test port. That file's healthcheck was also removed: distroless has no curl and no shell, so
+it had reported "unhealthy" since the day it was written (health in production is
+CloudFront/Caddy's concern).
+
+**Verification.** `docker compose config` validates both files; `docker ps` on the dev database
+shows `127.0.0.1:5432->5432/tcp`.
+
+### SEC-010 — Build context included `secrets/` and `.claude/`
+
+**Severity:** Low · **Status:** Fixed 2026-08-23 · **Where:** `.dockerignore`
+
+**Finding.** `COPY . .` shipped `secrets/` (encrypted — but a decrypted `*.dec*` left behind by
+tooling would ride along into a builder layer) and the ~2 200-file `.claude/` directory into every
+build context.
+
+**Change.** Both excluded. The runtime stage never copied them, so this is exposure trimming for
+the builder stage plus faster context uploads.
+
+### SEC-011 — Publish tunnel: control socket in /tmp, TOFU host keys
+
+**Severity:** Low · **Status:** Fixed 2026-08-23 · **Where:** `Makefile` (`blog/publish`)
+
+**Finding.** The ssh ControlMaster socket lived at a fixed path in world-writable `/tmp`: any
+local process could pre-create it, ssh would then silently disable multiplexing, and the EXIT trap
+could no longer close the tunnel — leaving production Postgres forwarded on `127.0.0.1:5433` after
+`make` returned. Both ssh invocations also used `StrictHostKeyChecking=accept-new` (trust on first
+use).
+
+**Change.** The socket moved to `~/.ssh/kdev-pg-tunnel.sock` (0700 directory), with a stale-socket
+`rm -f` after the initial `-O exit`. Host key checking is `yes`: the origin's ed25519 key is
+already in `known_hosts`, so nothing ever TOFUs again — if the host is ever rebuilt, update
+`known_hosts` deliberately (personal-infra owns the host key).
+
+**Verification.** `ssh-keygen -F origin.kenesparta.dev` confirms the pinned key; `make -n
+blog/publish` shows socket path, `rm -f`, and `StrictHostKeyChecking=yes` on both invocations.
+
+### SEC-012 — Public server function accepted an unbounded limit
+
+**Severity:** Low · **Status:** Fixed 2026-08-23 · **Where:** `apps/backend/src/app/api.rs`
+
+**Finding.** `get_published_posts(limit)` is a public endpoint and handed the client's `limit`
+straight to `LIMIT $1` — `i32::MAX` returned the whole table (harmless today, unbounded by
+contract).
+
+**Change.** The client value is folded into `[1, 100]` at the boundary. The complete listings
+(sitemap, feed, llms.txt) call the use case directly server-side and are unaffected.
+
+**Verification.** A probe repository asserts any limit it receives is within `[1, 100]`; the test
+feeds `i32::MAX`, `101`, `0`, `-5`, `i32::MIN` and `None` through the real server function.
+Reverting the clamp makes it fail ("unclamped client limit reached the repository: 2147483647").
+
+## Open findings
+
+None. Every finding of the 2026-08-23 audit (SEC-001 … SEC-012) is closed above. New findings get
+the next id and start here until fixed or accepted.
 
 ## Supply-chain verification record — 2026-08-23
 

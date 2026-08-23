@@ -352,8 +352,14 @@ On the host, all managed by Ansible (hand edits are reverted):
 GitHub Actions (`.github/workflows/publish-image.yml`), on version tags:
 
 ```bash
-git tag v1.0.0 && git push origin v1.0.0
+git tag v1.0.0 -m v1.0.0 && git push origin v1.0.0   # signed: tag.gpgSign=true (SEC-008)
 ```
+
+Release tags are annotated and GPG-signed (`tag.gpgSign` is set in this repo's git
+config — the `-m` is required, a bare `git tag vX.Y.Z` opens the editor), and a
+GitHub tag ruleset (`protect-release-tags`) restricts creating/moving/deleting
+`v*` tags to repository admins. Pushing a `v*` tag IS the deploy, so those two
+controls are the release gate.
 
 builds the image and pushes `ghcr.io/kenesparta/kenespartadev:vX.Y.Z` + `:latest` to GHCR, authenticated with the
 repo's own `GITHUB_TOKEN` — no AWS credentials, no OIDC role, no Terraform. The host's deploy timer picks up the
