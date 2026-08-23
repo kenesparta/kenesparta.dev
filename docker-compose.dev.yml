@@ -8,8 +8,10 @@ services:
       - POSTGRES_DB=blog
     ports:
       # Published so host-side runs (cargo leptos watch, make blog/ingest)
-      # reach the same database.
-      - "5432:5432"
+      # reach the same database — loopback only (SECURITY.md SEC-009): a bare
+      # "5432:5432" binds every interface, offering blog/blog to the local
+      # network.
+      - "127.0.0.1:5432:5432"
     volumes:
       # postgres 18+ images keep data in version-specific subdirs under
       # /var/lib/postgresql — mounting the old /data path would leave the
@@ -29,8 +31,9 @@ services:
       dockerfile: Dockerfile.dev
     container_name: kenespartadev-dev
     ports:
-      - "3000:3000"
-      - "3001:3001"
+      # Loopback only (SEC-009); use a real tunnel if another device needs it.
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3001:3001"
     volumes:
       - .:/app/.
 

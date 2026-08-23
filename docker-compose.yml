@@ -5,16 +5,14 @@ services:
       dockerfile: Dockerfile
     container_name: kenespartadev
     ports:
-      - "3000:3000"
+      # Local smoke test only — loopback (SECURITY.md SEC-009).
+      - "127.0.0.1:3000:3000"
     restart: unless-stopped
     networks:
       - app-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    # No healthcheck: the distroless runtime has no curl, no shell, nothing to
+    # probe with — the old curl-based check reported "unhealthy" forever.
+    # Health in production is CloudFront/Caddy's concern (personal-infra).
 
 networks:
   app-network:
