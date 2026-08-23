@@ -94,11 +94,11 @@ belongs only in `~/.config/sops/age/keys.txt`.
 `grep -rn 'SOPS_AGE_KEY\|AWS_ROLE_ARN' .github/` matches nothing.
 
 **Follow-ups.**
-- Confirm in AWS that the `github_actions_deploy` IAM role and the GitHub OIDC
+- ~~Confirm in AWS that the `github_actions_deploy` IAM role and the GitHub OIDC
   provider from the deleted `tf/` were actually destroyed (no AWS session was
-  available during the audit). If the role still exists, delete it or restrict
-  its trust policy — an orphaned role that trusts `repo:kenesparta/kenesparta.dev:*`
-  lets any future workflow here assume it.
+  available during the audit).~~ Done 2026-08-23: the role was **not** destroyed —
+  it was migrated into personal-infra's state and kept for `typst-resume`, still
+  trusting this repository. Restricting its trust policy is **SEC-013**.
 - Optional, cheap: rotate the age key (`age-keygen`, replace the recipient in
   `.sops.yaml`, `make secrets-rotate`). The key was stored in GitHub for about a
   month and used by CI for three days, all under the owner's control, so this is
@@ -361,10 +361,51 @@ contract).
 feeds `i32::MAX`, `101`, `0`, `-5`, `i32::MIN` and `None` through the real server function.
 Reverting the clamp makes it fail ("unclamped client limit reached the repository: 2147483647").
 
+### SEC-013 — The migrated OIDC deploy role still trusted this repository
+
+**Severity:** Medium · **Status:** Pending — the Terraform change is written and planned in
+`../personal-infra` (`tf.plan`: 0 add / 1 change / 0 destroy); blocked on `make apply` there ·
+**Where:** AWS IAM role `github-actions-ecr-ecs-deploy`, fixed via `../personal-infra`
+(`terraform/iam.tf`, spec AD-5)
+
+**Finding.** Chasing SEC-002's follow-up with a live AWS session: the old pipeline's IAM role was
+never destroyed. Its state was migrated verbatim into personal-infra (AD-9, addresses preserved)
+and the role deliberately survives Phase 7 because `typst-resume` publishes the CV through it —
+its only remaining permission is write/delete on the `cdn.kenesparta.dev` S3 bucket. But its
+trust policy still accepted `repo:kenesparta/kenesparta.dev:ref:refs/heads/main` and
+`:ref:refs/tags/*`. This repository's CI has needed no AWS access since the GHCR migration, so
+the entries were pure leftover: any workflow added here — or a compromised action running inside
+one (the SEC-003 scenario) — could assume the role over OIDC and overwrite or delete the
+published CV and the blog's static assets. The GitHub OIDC *provider* remains in the account,
+correctly: two roles legitimately federate through it (`typst-resume` → CDN bucket,
+`cnayp-discord-bot` → its legal-pages bucket), and neither trusts this repository.
+
+**Change.** In `../personal-infra` (all infra changes are made there): the two `kenesparta.dev`
+`sub` entries removed from the role's trust policy, leaving `typst-resume` alone; spec
+`03-decisions.md` AD-5 amended to record the scoping so it is not re-added. Nothing to change in
+this repository — no workflow has referenced the role since SEC-002 deleted `AWS_ROLE_ARN`.
+
+**Verification.** Before: enumerating all roles whose trust policy names
+`token.actions.githubusercontent.com` found exactly the two above, with this repository present
+only on `github-actions-ecr-ecs-deploy`. Plan reviewed: the only diff is the two removed `sub`
+lines. After the apply, re-read the role and confirm
+`aws iam get-role --role-name github-actions-ecr-ecs-deploy` lists `typst-resume` subjects only.
+
+**Follow-ups.**
+- Run `make apply` in `../personal-infra` (the saved `tf.plan`), then flip this entry to Fixed.
+- Worth checking separately: GitHub has begun issuing **immutable** OIDC subject claims
+  (`repo:kenesparta@8525741/<repo>@<id>:…` — see the `cnayp-bot` role's comment in `iam.tf`,
+  which lists both spellings because the plain-name form was already being denied for that
+  repo). `typst-resume`'s trust lists only the plain spelling; if its claims switch, the CV
+  publish starts failing with an opaque `Not authorized to perform
+  sts:AssumeRoleWithWebIdentity`. Adding the id-form spellings for `typst-resume` mirrors the
+  scoping commit `8f19d8e` in personal-infra.
+
 ## Open findings
 
-None. Every finding of the 2026-08-23 audit (SEC-001 … SEC-012) is closed above. New findings get
-the next id and start here until fixed or accepted.
+**SEC-013** is Pending (see above) — the trust-policy fix is planned in `../personal-infra` and
+awaits `make apply`. Every finding of the 2026-08-23 audit (SEC-001 … SEC-012) is closed above.
+New findings get the next id and start here until fixed or accepted.
 
 ## Supply-chain verification record — 2026-08-23
 
