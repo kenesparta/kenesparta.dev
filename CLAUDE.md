@@ -17,6 +17,11 @@ proposing infra changes, and make them there, not here. This repo builds and shi
 more. The old `tf/` directory (Lightsail Container Service, ECR, per-repo CloudFront) was deleted in the migration —
 do not recreate it.
 
+**Security ledger:** `SECURITY.md` records every security-relevant change as a `SEC-NNN` entry (finding, change,
+verification, follow-ups) plus the open findings of the last audit. Add an entry whenever you touch secrets handling,
+the Makefile `blog/*`/`secrets*` targets, the workflows, CI trust (action pins, tokens), response headers, or bump a
+dependency for an advisory — and read it before changing any of those.
+
 **Tech Stack:**
 - **Frontend/Backend**: Leptos 0.8.0 (full-stack Rust framework with SSR and hydration)
 - **Web Server**: Axum 0.8.0
@@ -148,6 +153,11 @@ container's IP on the `web` Docker network (`docker inspect`; the IP can change 
 restarts, so it is fetched every run), forwards `127.0.0.1:5433` to it via a
 control-master ssh that a `trap` always tears down, and runs the ingest with the
 `DATABASE_URL` host rewritten `@postgres:5432` → `@127.0.0.1:5433` on the fly.
+The ingest binary is compiled **before** the tunnel opens and with no secret in its
+environment (`make blog/build`: `env -u DATABASE_URL cargo build --locked …`), then
+executed as `target/debug/ingest` under `sops exec-env`. Never fold that back into a
+`cargo run` under sops: it would hand the production `DATABASE_URL` to every `build.rs`
+and proc-macro in the dependency graph while the tunnel is open (SECURITY.md, SEC-001).
 `secrets/prod.enc.env` therefore keeps the **canonical in-network URL**
 (`…@postgres:5432/blog`) — do not point it at the tunnel. Override
 `PUBLISH_SSH_KEY` / `PUBLISH_SSH_HOST` / `TUNNEL_PORT` if those defaults move.

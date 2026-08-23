@@ -152,14 +152,13 @@ make blog/ingest             # into the dev database
 make blog/publish            # into PRODUCTION
 ```
 
-Note: with the Lightsail database's public mode off, your machine cannot reach
-it — temporarily enable it around a publish:
-
-```bash
-aws lightsail update-relational-database --relational-database-name <db> --publicly-accessible
-make blog/publish
-aws lightsail update-relational-database --relational-database-name <db> --no-publicly-accessible
-```
+Both targets first compile the ingest binary with **no secret in the environment**
+(`make blog/build`), and only then run it under `sops exec-env` — a plain
+`cargo run` under sops would expose `DATABASE_URL` to every build script in the
+dependency tree (see `SECURITY.md`, SEC-001). The production Postgres has no
+network path from outside: `make blog/publish` opens an SSH tunnel to the
+container on the host (`~/.ssh/personal-infra`, `ubuntu@origin.kenesparta.dev`)
+and tears it down when the ingest exits.
 
 ## Docker
 
@@ -267,16 +266,20 @@ make dev/destroy # Destroy resources
 
 ## CI/CD Pipeline
 
-GitHub Actions (`publish-image.yml`) on version tags (`vX.Y.Z`):
-1. **`build-push`**: builds the Docker image and pushes it to the private ECR repo (`:vX.Y.Z` + `:latest`)
-2. **`deploy`**: rolls it out on Lightsail with `terraform apply -auto-approve -target` of the deployment resource (`TF_VAR_image_version=<tag>`); the sops provider decrypts `secrets/prod.enc.env` in the runner
-
-The same rollout can be run locally: `cd tf && make rollout VERSION=vX.Y.Z`.
+GitHub Actions (`publish-image.yml`) on version tags (`vX.Y.Z`): a single
+`build-push` job builds the Docker image and pushes it to GHCR as
+`ghcr.io/kenesparta/kenespartadev:vX.Y.Z` and `:latest`. That is the whole
+pipeline — the host's systemd timer (personal-infra) polls GHCR every 10 minutes
+and recreates the container when `latest` moves. `audit.yml` runs `cargo audit`
+on dependency changes and weekly.
 
 ### Required Secrets
 
-- `AWS_ROLE_ARN`: OIDC role ARN for GitHub Actions (both jobs)
-- `SOPS_AGE_KEY`: the age private key (`AGE-SECRET-KEY-…` line from `~/.config/sops/age/keys.txt`), used by the deploy job to decrypt `secrets/prod.enc.env`
+None. The workflow authenticates to GHCR with the repository's own
+`GITHUB_TOKEN` (`packages: write`). The `AWS_ROLE_ARN` and `SOPS_AGE_KEY`
+secrets of the former ECR/Terraform pipeline are no longer used and must not be
+re-created — the age private key in particular belongs only in
+`~/.config/sops/age/keys.txt` (see `SECURITY.md`, SEC-002).
 
 ## Routes
 
