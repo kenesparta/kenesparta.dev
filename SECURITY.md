@@ -68,8 +68,7 @@ down (`PoolTimedOut`).
 
 ### SEC-002 — Leftover GitHub Actions secrets `SOPS_AGE_KEY` and `AWS_ROLE_ARN`
 
-**Severity:** High · **Status:** Pending — deletion needs the repository admin
-(the agent that did the audit was not permitted to run it) · **Where:** GitHub →
+**Severity:** High · **Status:** Fixed 2026-08-23 · **Where:** GitHub →
 Settings → Secrets and variables → Actions
 
 **Finding.** The repository still stores two Actions secrets from the retired
@@ -84,18 +83,15 @@ token with `workflow` scope, a compromised action in a workflow that references
 it) can exfiltrate it. `AWS_ROLE_ARN` is not secret in itself, but it points at
 an IAM role whose trust policy may still accept this repository's OIDC tokens.
 
-**Change (to apply).**
+**Change.** Both secrets deleted on 2026-08-23 with
+`gh secret delete SOPS_AGE_KEY` / `gh secret delete AWS_ROLE_ARN`
+(`-R kenesparta/kenesparta.dev`). The repository now has **no** Actions
+secrets; the workflow needs none (`GITHUB_TOKEN` only). `README.md` ("Required
+Secrets") states that these two must not be re-created — the age private key
+belongs only in `~/.config/sops/age/keys.txt`.
 
-```bash
-gh secret delete SOPS_AGE_KEY -R kenesparta/kenesparta.dev
-gh secret delete AWS_ROLE_ARN -R kenesparta/kenesparta.dev
-gh secret list   -R kenesparta/kenesparta.dev   # must print nothing
-```
-
-Then flip this entry to **Fixed** with the date. `README.md` ("Required
-Secrets") already states that no secret is required and that these two must not
-be re-created; the age private key belongs only in
-`~/.config/sops/age/keys.txt`.
+**Verification.** `gh secret list -R kenesparta/kenesparta.dev` prints nothing;
+`grep -rn 'SOPS_AGE_KEY\|AWS_ROLE_ARN' .github/` matches nothing.
 
 **Follow-ups.**
 - Confirm in AWS that the `github_actions_deploy` IAM role and the GitHub OIDC
