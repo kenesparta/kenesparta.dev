@@ -88,15 +88,19 @@ blog/ingest: blog/build
 PUBLISH_SSH_KEY  ?= $(HOME)/.ssh/personal-infra
 PUBLISH_SSH_HOST ?= ubuntu@origin.kenesparta.dev
 TUNNEL_PORT      ?= 5433
-TUNNEL_SOCK      := /tmp/kdev-pg-tunnel
+# In ~/.ssh (0700), not /tmp (SECURITY.md SEC-011): a world-writable dir would
+# let any local process pre-create the control socket — ssh then silently
+# disables multiplexing and the EXIT trap can no longer close the tunnel.
+TUNNEL_SOCK      := $(HOME)/.ssh/kdev-pg-tunnel.sock
 
 blog/publish: blog/build
 	@set -e; \
 	ssh -S $(TUNNEL_SOCK) -O exit $(PUBLISH_SSH_HOST) 2>/dev/null || true; \
-	PGIP=$$(ssh -i $(PUBLISH_SSH_KEY) -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new $(PUBLISH_SSH_HOST) \
+	rm -f $(TUNNEL_SOCK); \
+	PGIP=$$(ssh -i $(PUBLISH_SSH_KEY) -o ConnectTimeout=10 -o StrictHostKeyChecking=yes $(PUBLISH_SSH_HOST) \
 	  "docker inspect -f '{{.NetworkSettings.Networks.web.IPAddress}}' postgres"); \
 	echo "postgres container en $$PGIP — abriendo túnel 127.0.0.1:$(TUNNEL_PORT)"; \
 	ssh -i $(PUBLISH_SSH_KEY) -f -N -M -S $(TUNNEL_SOCK) -o ExitOnForwardFailure=yes \
-	  -o StrictHostKeyChecking=accept-new -L $(TUNNEL_PORT):$$PGIP:5432 $(PUBLISH_SSH_HOST); \
+	  -o StrictHostKeyChecking=yes -L $(TUNNEL_PORT):$$PGIP:5432 $(PUBLISH_SSH_HOST); \
 	trap "ssh -S $(TUNNEL_SOCK) -O exit $(PUBLISH_SSH_HOST) 2>/dev/null || true" EXIT; \
 	sops exec-env secrets/prod.enc.env 'DATABASE_URL=$$(printf %s "$$DATABASE_URL" | sed "s/@postgres:5432/@127.0.0.1:$(TUNNEL_PORT)/") $(INGEST_BIN) content/posts $(if $(PRUNE),--prune)'
