@@ -138,6 +138,52 @@ unmaintained warnings; `cargo check --locked` passes for `ssr` and for
 them — watch the leptos 0.8.x changelog. Consider `cargo deny` (`sources`,
 `bans`, licences) as the lockfile policy this audit enforced by hand.
 
+### SEC-003 — Actions pinned to mutable tags, with `packages: write` and auto-deploy behind them
+
+**Severity:** Medium · **Status:** Fixed 2026-08-23 · **Where:**
+`.github/workflows/*.yml`, `.github/dependabot.yml`, repository settings
+
+**Finding.** All six Actions were referenced by major tag (`@v4`, `@v7`, `@v2`,
+`@v3`, `@v6`). A tag is a pointer whoever controls the action's repository can
+move — the 2025 `tj-actions/changed-files` compromise did exactly that. Here the
+`publish-image` workflow runs with `packages: write`, and the host redeploys
+whatever `:latest` becomes within 10 minutes, so a moved tag was a direct path
+to production. The repository allowed any action (`allowed_actions: all`) and
+did not require SHA pinning; `audit.yml` and `publish-image.yml` also disagreed
+on `actions/checkout` (v4 vs v7).
+
+**Change.**
+- Every `uses:` is a full commit SHA with the release as a trailing comment:
+  `actions/checkout@3d3c42e5…` (v7.0.1, both workflows),
+  `taiki-e/install-action@288e7469…` (v2.86.1 — deliberately a week-old
+  release rather than the one cut the same day),
+  `docker/login-action@c94ce9fb…` (v3.7.0),
+  `docker/setup-buildx-action@8d2750c6…` (v3.12.0),
+  `docker/build-push-action@10e90e36…` (v6.19.2). Each SHA was resolved from
+  the tag through the GitHub API and checked to be a commit object.
+- Repository settings (Actions → General): **Require actions to be pinned to
+  a full-length commit SHA** = on (`sha_pinning_required: true`), and
+  **Allow select actions** = GitHub-owned + verified creators +
+  `docker/*`, `taiki-e/install-action@*`. Both fail closed: a workflow that
+  regresses to a tag, or pulls an action outside that list, does not run.
+- `.github/dependabot.yml`: weekly, grouped updates for `github-actions`
+  (bumps SHA and comment together), `cargo` (one PR for minor/patch,
+  `wasm-bindgen` excluded because it is pinned to the cargo-leptos CLI), `npm`
+  (`apps/backend/end2end`) and `docker`. Dependabot security updates enabled
+  (alerts already were). `audit.yml` runs on every Dependabot PR.
+
+**Verification.** Push of the pinned workflows triggered `audit.yml`
+(run 32653534901): success, all steps green. After the settings change a
+`workflow_dispatch` run (32653595115) succeeded under
+`sha_pinning_required` + the allow-list. Dependabot reports 0 open alerts; the
+13 in its history are all *fixed* and belong to npm lockfiles that no longer
+exist (`site/`, `web/`, the pre-pnpm `package-lock.json`).
+
+**Follow-ups.** Dependabot PRs need a human review, not an auto-merge: a
+bumped SHA is only as trustworthy as the release behind it. When a
+`publish-image` change needs a new action, add it to the allow-list pattern
+before tagging, or the release will fail closed.
+
 ## Open findings (audit of 2026-08-23)
 
 Found during the same audit, not yet addressed. Each gets its id now so the fix
@@ -145,7 +191,6 @@ can reference it; move an item into *Entries* when it is fixed or accepted.
 
 | Id | Sev. | Finding | Where | Fix |
 |---|---|---|---|---|
-| SEC-003 | Medium | All six Actions are pinned to mutable major tags; repo setting *require SHA pinning* is off and `allowed_actions` is `all`. `publish-image` holds `packages: write` and a moved `latest` auto-deploys within 10 min, so a retagged action (the 2025 `tj-actions/changed-files` pattern) is a direct path to production. | `.github/workflows/*.yml`, repo settings | Pin to full SHAs (resolved 2026-08-23: `actions/checkout` `3d3c42e5aac5ba805825da76410c181273ba90b1` v7.0.1 · `taiki-e/install-action` `6cd13508893c0e7eab5f273c2575d3859bd7229a` v2.86.6 · `docker/login-action` `c94ce9fb468520275223c153574b00df6fe4bcc9` v3.7.0 · `docker/setup-buildx-action` `8d2750c68a42422c14e847fe6c8ac0403b4cbd6f` v3.12.0 · `docker/build-push-action` `10e90e3645eae34f1e60eeb005ba3a3d33f178e8` v6.19.2); unify `audit.yml` on checkout v7; enable the SHA-pinning setting; add Dependabot for `github-actions`, `cargo`, `npm`, `docker`. |
 | SEC-004 | Medium | No security response headers anywhere in the chain — verified live (`HTTP/2 200`, only `content-type` and `vary`). The app sets none, Caddy only gates on `X-Origin-Verify`, the blog CloudFront distribution has no response-headers policy. | `apps/backend/src/main.rs` (the app owns its markup, so set them here) | `tower_http::set_header::SetResponseHeaderLayer` (feature `set-header`) for `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `X-Frame-Options: DENY`, `Permissions-Policy`. CSP needs Leptos nonce support for the hydration and JSON-LD inline scripts — start as `Content-Security-Policy-Report-Only`. |
 | SEC-005 | Medium | Raw database errors are rendered to visitors: `RepositoryError::Infrastructure(sqlx_err.to_string())` travels through `ServerFnError::new(error)` into `"Error loading post: " {e.to_string()}`. | `persistence/blog_postgres.rs:52` → `app/api.rs:40,51` → `app/pages/blog/blog_post.rs:50`, `blog_list.rs:24` | Keep the `tracing::error!`; return an opaque `ServerFnError::new("service unavailable")` and render a generic message. |
 | SEC-006 | Medium | Docker trust anchors are mutable: the cargo-leptos installer is `curl \| sh` with no hash (the script itself embeds SHA-256s for the tarballs it downloads, so pinning the script closes the gap); base images are referenced by tag. | `Dockerfile:1,7,19`, `Dockerfile.dev` | Verify the installer against `sha256 d12461e2fd1be38e43dcf4b6ba43abf3f8ddf2689c06c2b0aa8bf499c0b796ee` (v0.2.46, as of 2026-08-23) before piping to `sh`; pin `rust:1.98-bookworm@sha256:e70e2eec3d495fd5c8e0be74adda86507dfac7f51a724fbf9813ff59b2b247c7` and `gcr.io/distroless/cc-debian12@sha256:e5d81ddde149641e2a9ba55be4545bc125c67de07508b03ba4c22e6eb0ded5aa`; let Dependabot move the digests. |

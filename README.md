@@ -271,7 +271,10 @@ GitHub Actions (`publish-image.yml`) on version tags (`vX.Y.Z`): a single
 `ghcr.io/kenesparta/kenespartadev:vX.Y.Z` and `:latest`. That is the whole
 pipeline — the host's systemd timer (personal-infra) polls GHCR every 10 minutes
 and recreates the container when `latest` moves. `audit.yml` runs `cargo audit`
-on dependency changes and weekly.
+on dependency changes and weekly, failing on vulnerabilities and on yanked or
+unsound crates. Actions are pinned to commit SHAs (the repository rejects tag
+references) and Dependabot keeps the pins and lockfiles fresh — see
+`SECURITY.md`.
 
 ### Required Secrets
 
