@@ -1,6 +1,10 @@
 target/
 node_modules/
 .git/
+# SECURITY.md SEC-010: the *.enc.env files are age-encrypted, but a decrypted
+# *.dec*/*.plain* left behind must never land in a build-context layer.
+secrets/
+.claude/
 .gitignore
 .env
 .env.*
