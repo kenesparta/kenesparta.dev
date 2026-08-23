@@ -51,6 +51,10 @@ default = []
 hydrate = ["leptos/hydrate", "dep:console_error_panic_hook", "dep:wasm-bindgen"]
 ssr = [
     "leptos/ssr",
+    # Per-request nonce for the inline hydration script, so the Content-
+    # Security-Policy can forbid every other inline script (SECURITY.md
+    # SEC-004). Server-only: the wasm build never generates one.
+    "leptos/nonce",
     "leptos_meta/ssr",
     "leptos_router/ssr",
     "dep:leptos_axum",
@@ -66,6 +70,9 @@ ssr = [
 ]
 # The `ingest` bin: everything the server has, plus the markdown pipeline.
 ingest = ["ssr", "dep:pulldown-cmark", "dep:toml"]
+
+[dev-dependencies]
+tower.workspace = true
 
 [[bin]]
 name = "ingest"

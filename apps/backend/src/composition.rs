@@ -11,6 +11,7 @@ use bc_blog::application::use_cases::{
     GetPostById, GetPostBySlug, GetPostMarkdown, ListPublishedPosts, PrunePosts, UpsertPost,
 };
 use bc_blog::domain::repository::BlogRepository;
+use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 
 use crate::configuration::Configuration;
@@ -49,6 +50,12 @@ pub async fn compose(config: &Configuration) -> Result<Container, Box<dyn std::e
     sqlx::migrate!().run(&pool).await?;
     tracing::info!("postgres pool ready, migrations applied");
 
+    Ok(wire(pool))
+}
+
+/// Wire the use cases over an existing pool. Pure construction, no IO — so
+/// tests can build a `Container` around a lazy pool that never connects.
+pub fn wire(pool: PgPool) -> Container {
     let repository: Arc<dyn BlogRepository> = Arc::new(PostgresBlogRepository::new(pool));
 
     let blog = BlogUseCases {
@@ -60,5 +67,5 @@ pub async fn compose(config: &Configuration) -> Result<Container, Box<dyn std::e
         prune: Arc::new(PrunePosts::new(repository)),
     };
 
-    Ok(Container { blog })
+    Container { blog }
 }

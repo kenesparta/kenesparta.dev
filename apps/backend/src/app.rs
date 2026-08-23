@@ -110,6 +110,10 @@ fn ConditionalNavBar() -> impl IntoView {
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     provide_meta_context();
+    // The page's Content-Security-Policy, bound to this request's nonce (the
+    // one <HydrationScripts> stamps on its inline script). SECURITY.md SEC-004.
+    #[cfg(feature = "ssr")]
+    crate::security::provide_csp(&options);
 
     view! {
         <!DOCTYPE html>

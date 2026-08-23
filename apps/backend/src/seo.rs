@@ -201,7 +201,11 @@ pub async fn redirect_trailing_slash(request: Request, next: Next) -> Response {
             Some(query) => format!("{target}?{query}"),
             None => target,
         };
-        return (StatusCode::PERMANENT_REDIRECT, [(header::LOCATION, location)]).into_response();
+        return (
+            StatusCode::PERMANENT_REDIRECT,
+            [(header::LOCATION, location)],
+        )
+            .into_response();
     }
 
     next.run(request).await

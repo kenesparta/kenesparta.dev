@@ -17,6 +17,8 @@ pub mod http;
 #[cfg(feature = "ssr")]
 pub mod persistence;
 #[cfg(feature = "ssr")]
+pub mod security;
+#[cfg(feature = "ssr")]
 pub mod seo;
 #[cfg(feature = "ssr")]
 pub mod telemetry;

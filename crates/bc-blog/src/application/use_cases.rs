@@ -229,7 +229,11 @@ mod tests {
         }
 
         async fn find_by_id(&self, post_id: &str) -> Result<Option<BlogPost>, RepositoryError> {
-            Ok(self.posts.iter().find(|post| post.post_id == post_id).cloned())
+            Ok(self
+                .posts
+                .iter()
+                .find(|post| post.post_id == post_id)
+                .cloned())
         }
 
         async fn upsert(&self, _post: &BlogPost) -> Result<(), RepositoryError> {

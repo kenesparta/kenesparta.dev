@@ -85,6 +85,7 @@ dependency for an advisory — and read it before changing any of those.
 │       │   ├── http.rs                    # ServerState + server-fn handler
 │       │   ├── seo.rs                     # crawler endpoints: /sitemap.xml, /feed.xml, /llms.txt,
 │       │   │                              #   /blog/<slug>.md + its rewrite middleware (ssr-only)
+│       │   ├── security.rs                # response headers + per-request CSP nonce (SEC-004)
 │       │   ├── telemetry.rs               # JSON tracing subscriber, shared by server + ingest bins
 │       │   ├── persistence/blog_postgres.rs   # PostgresBlogRepository (implements the port)
 │       │   └── app/                       # UI: app.rs (routing/shell), components/, pages/, constants.rs, api.rs (server fns)

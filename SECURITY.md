@@ -213,6 +213,59 @@ catch the bug it guards against.
 **Follow-ups.** None. If a new server function is added, route its errors
 through the same constant.
 
+### SEC-004 — No security response headers anywhere in the chain
+
+**Severity:** Medium · **Status:** Fixed 2026-08-23 · **Where:**
+`apps/backend/src/security.rs` (new), `http.rs`, `app.rs`, the e2e suite
+
+**Finding.** Verified live: `https://kenesparta.dev/` answered with only
+`content-type` and `vary`. The app set nothing, Caddy only gates on
+`X-Origin-Verify`, and the blog CloudFront distribution has no
+response-headers policy — no HSTS, no `nosniff`, no CSP, no referrer or
+framing policy, end to end.
+
+**Change.** The app owns its markup, so it sets the headers
+(`src/security.rs`, mounted in `http::build_app` outside the redirect/rewrite
+middlewares so their responses are covered too):
+
+- On every response: `Strict-Transport-Security` (belt-and-braces — `.dev` is
+  browser-preloaded), `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`,
+  `Permissions-Policy` (camera, microphone, geolocation, payment all off) and
+  `Cross-Origin-Opener-Policy: same-origin`.
+- A **Content-Security-Policy, enforced**, per request. Leptos hydrates via an
+  inline `<script type="module">`, so the leptos `nonce` feature (ssr-only) has
+  `leptos_axum` generate a nonce per render; `shell()` builds the policy around
+  it (`security::provide_csp`) and `<HydrationScripts>` stamps it on the
+  script — Async-mode resource-serialization scripts get it too. The policy:
+  `script-src 'self' 'nonce-…' 'wasm-unsafe-eval'` (no `unsafe-inline`
+  anywhere), fonts/images from the CDN, `connect-src 'self'` (plus the
+  cargo-leptos reload websocket, only under `LEPTOS_WATCH`),
+  `frame-ancestors 'none'`, `object-src 'none'`, `base-uri`/`form-action`
+  `'self'`. Responses that are not rendered pages — assets, 308 redirects, the
+  crawler endpoints — get `default-src 'none'; frame-ancestors 'none'`.
+- `main.rs`'s router moved to `http::build_app` so tests can drive the real
+  app without a socket; `composition::wire(pool)` split out of `compose` so
+  they can build the container over a lazy pool.
+
+**Verification.** Enforced, not report-only, on the strength of: unit tests on
+the policy string; router tests (`tower::ServiceExt::oneshot` over the real
+app) asserting the nonce in the header equals the nonce on the hydration
+script, fresh per request, on `/` and on the 404 page, with the fallback
+policy on redirects and crawler endpoints; and a Playwright chromium suite
+against the running server + dev DB — hydration on `/`, `/blog` and a
+published post page with **zero** CSP violations or page errors, wasm loading
+under `'wasm-unsafe-eval'`, client-side routing and the server-function fetch
+working under the policy (18/18, three consecutive runs). The post-page tests
+self-skip when the database has no published post, so they do not depend on
+this machine's drafts.
+
+**Follow-ups.** After the next deploy, click through the live site once with
+the browser console open — the only environmental difference from the verified
+setup is CloudFront/Caddy in front. If leptos ever adds a second inline-script
+mechanism, the nonce covers it only if the framework stamps it; the e2e suite
+would catch that as a violation.
+
 ## Open findings (audit of 2026-08-23)
 
 Found during the same audit, not yet addressed. Each gets its id now so the fix
@@ -220,7 +273,6 @@ can reference it; move an item into *Entries* when it is fixed or accepted.
 
 | Id | Sev. | Finding | Where | Fix |
 |---|---|---|---|---|
-| SEC-004 | Medium | No security response headers anywhere in the chain — verified live (`HTTP/2 200`, only `content-type` and `vary`). The app sets none, Caddy only gates on `X-Origin-Verify`, the blog CloudFront distribution has no response-headers policy. | `apps/backend/src/main.rs` (the app owns its markup, so set them here) | `tower_http::set_header::SetResponseHeaderLayer` (feature `set-header`) for `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `X-Frame-Options: DENY`, `Permissions-Policy`. CSP needs Leptos nonce support for the hydration and JSON-LD inline scripts — start as `Content-Security-Policy-Report-Only`. |
 | SEC-006 | Medium | Docker trust anchors are mutable: the cargo-leptos installer is `curl \| sh` with no hash (the script itself embeds SHA-256s for the tarballs it downloads, so pinning the script closes the gap); base images are referenced by tag. | `Dockerfile:1,7,19`, `Dockerfile.dev` | Verify the installer against `sha256 d12461e2fd1be38e43dcf4b6ba43abf3f8ddf2689c06c2b0aa8bf499c0b796ee` (v0.2.46, as of 2026-08-23) before piping to `sh`; pin `rust:1.98-bookworm@sha256:e70e2eec3d495fd5c8e0be74adda86507dfac7f51a724fbf9813ff59b2b247c7` and `gcr.io/distroless/cc-debian12@sha256:e5d81ddde149641e2a9ba55be4545bc125c67de07508b03ba4c22e6eb0ded5aa`; let Dependabot move the digests. |
 | SEC-008 | Low | No tag ruleset and release tags are lightweight (unsigned); pushing any `v*` tag is a production deploy. Commits are 100 % signed and GitHub-verified, tags are not. | repo settings, release process | Tag ruleset restricting `v*` to the owner; `git tag -s`. |
 | SEC-009 | Low | The dev compose publishes Postgres (`blog:blog`) and ports 3000/3001 on all interfaces. | `docker-compose.dev.yml` | Prefix the port mappings with `127.0.0.1:`. |

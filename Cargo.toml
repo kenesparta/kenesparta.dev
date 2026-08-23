@@ -31,6 +31,8 @@ tower-http = { version = "0.7.0", features = ["compression-full", "trace"] }
 
 # Server-only: structured JSON logs on stdout, filtered by RUST_LOG.
 tracing = "0.1"
+# Tests only: `ServiceExt::oneshot` drives the router without binding a socket.
+tower = { version = "0.5", features = ["util"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # Runtime queries (query_as + FromRow derive) — we never use the query!
 # macros, so the Docker build stays free of DATABASE_URL / offline caches.
