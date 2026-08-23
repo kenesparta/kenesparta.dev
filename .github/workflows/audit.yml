@@ -41,7 +41,11 @@ jobs:
         with:
           tool: cargo-audit
 
-      # Reads the documented ignores from .cargo/audit.toml; fails on any
-      # non-ignored vulnerability in Cargo.lock.
+      # Fails on any vulnerability and — SECURITY.md SEC-007 — on yanked or
+      # unsound crates, which only warned before and let a yanked `spin` ship
+      # in the release binary. `unmaintained` stays a warning: the two today
+      # (paste, proc-macro-error2) come through leptos and are not ours to fix.
+      # If an advisory ever has to be ignored, put it in .cargo/audit.toml with
+      # the reason and a SEC entry; do not loosen these flags.
       - name: Run cargo audit
-        run: cargo audit
+        run: cargo audit --deny yanked --deny unsound

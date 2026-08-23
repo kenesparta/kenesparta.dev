@@ -104,6 +104,40 @@ belongs only in `~/.config/sops/age/keys.txt`.
   month and used by CI for three days, all under the owner's control, so this is
   belt-and-braces rather than a response to a known exposure.
 
+### SEC-007 — Yanked and unsound crates shipped because `cargo audit` only warned
+
+**Severity:** Medium · **Status:** Fixed 2026-08-23 · **Where:** `Cargo.lock`,
+`.github/workflows/audit.yml`
+
+**Finding.** The release binary compiled `spin 0.9.8`, a **yanked** version
+(via `multer` → `axum`), and `event-listener 5.4.1`, flagged **unsound**
+(RUSTSEC-2026-0221, via `async-lock` → `reactive_graph` → `leptos`). CI's
+`cargo audit` reported both on every run and still exited 0: yanked/unsound
+are warnings by default, and nothing denied them. The workflow's comments also
+referred to a `.cargo/audit.toml` that does not exist.
+
+**Change.**
+- `cargo update -p spin -p event-listener`: `spin 0.9.8 → 0.9.9`
+  (published 2026-07-13 by `zesterer`, spin's long-time maintainer) and
+  `event-listener 5.4.1 → 5.4.2` (2026-07-27, `zeenix`, smol-rs), which also
+  dropped `concurrent-queue`. Targeted on purpose — a blanket `cargo update`
+  would have moved 82 crates at once; Dependabot (SEC-003) now does that
+  incrementally under review.
+- `audit.yml` runs `cargo audit --deny yanked --deny unsound`. `unmaintained`
+  deliberately stays a warning: the two today (`paste`, `proc-macro-error2`)
+  arrive through leptos and cannot be fixed here. Ignores, if ever needed, go in
+  `.cargo/audit.toml` with a reason and a SEC entry; the flags are not loosened.
+
+**Verification.** Both new versions' lockfile checksums match the crates.io
+index. `cargo audit --deny yanked --deny unsound` exits 0 with only the two
+unmaintained warnings; `cargo check --locked` passes for `ssr` and for
+`hydrate` on `wasm32-unknown-unknown`; the 4 unit tests pass; `make blog/build`
+(`--locked`) still builds.
+
+**Follow-ups.** `paste` and `proc-macro-error2` disappear when leptos drops
+them — watch the leptos 0.8.x changelog. Consider `cargo deny` (`sources`,
+`bans`, licences) as the lockfile policy this audit enforced by hand.
+
 ## Open findings (audit of 2026-08-23)
 
 Found during the same audit, not yet addressed. Each gets its id now so the fix
@@ -115,7 +149,6 @@ can reference it; move an item into *Entries* when it is fixed or accepted.
 | SEC-004 | Medium | No security response headers anywhere in the chain — verified live (`HTTP/2 200`, only `content-type` and `vary`). The app sets none, Caddy only gates on `X-Origin-Verify`, the blog CloudFront distribution has no response-headers policy. | `apps/backend/src/main.rs` (the app owns its markup, so set them here) | `tower_http::set_header::SetResponseHeaderLayer` (feature `set-header`) for `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `X-Frame-Options: DENY`, `Permissions-Policy`. CSP needs Leptos nonce support for the hydration and JSON-LD inline scripts — start as `Content-Security-Policy-Report-Only`. |
 | SEC-005 | Medium | Raw database errors are rendered to visitors: `RepositoryError::Infrastructure(sqlx_err.to_string())` travels through `ServerFnError::new(error)` into `"Error loading post: " {e.to_string()}`. | `persistence/blog_postgres.rs:52` → `app/api.rs:40,51` → `app/pages/blog/blog_post.rs:50`, `blog_list.rs:24` | Keep the `tracing::error!`; return an opaque `ServerFnError::new("service unavailable")` and render a generic message. |
 | SEC-006 | Medium | Docker trust anchors are mutable: the cargo-leptos installer is `curl \| sh` with no hash (the script itself embeds SHA-256s for the tarballs it downloads, so pinning the script closes the gap); base images are referenced by tag. | `Dockerfile:1,7,19`, `Dockerfile.dev` | Verify the installer against `sha256 d12461e2fd1be38e43dcf4b6ba43abf3f8ddf2689c06c2b0aa8bf499c0b796ee` (v0.2.46, as of 2026-08-23) before piping to `sh`; pin `rust:1.98-bookworm@sha256:e70e2eec3d495fd5c8e0be74adda86507dfac7f51a724fbf9813ff59b2b247c7` and `gcr.io/distroless/cc-debian12@sha256:e5d81ddde149641e2a9ba55be4545bc125c67de07508b03ba4c22e6eb0ded5aa`; let Dependabot move the digests. |
-| SEC-007 | Medium | `spin 0.9.8` is yanked yet compiled into the SSR binary (`multer` → `axum`); `event-listener 5.4.1` is unsound (RUSTSEC-2026-0221, 5.4.2 available); `paste` and `proc-macro-error2` are unmaintained. CI's `cargo audit` passes anyway because warnings are not denied, and the `.cargo/audit.toml` its comments reference does not exist. 82 crates had updates pending. | `Cargo.lock`, `.github/workflows/audit.yml` | `cargo update -p spin -p event-listener`; run `cargo audit --deny yanked --deny unsound` in CI; either create `.cargo/audit.toml` with documented ignores or drop the comment. Consider `cargo deny` for `sources`/`bans`/licence policy. |
 | SEC-008 | Low | No tag ruleset and release tags are lightweight (unsigned); pushing any `v*` tag is a production deploy. Commits are 100 % signed and GitHub-verified, tags are not. | repo settings, release process | Tag ruleset restricting `v*` to the owner; `git tag -s`. |
 | SEC-009 | Low | The dev compose publishes Postgres (`blog:blog`) and ports 3000/3001 on all interfaces. | `docker-compose.dev.yml` | Prefix the port mappings with `127.0.0.1:`. |
 | SEC-010 | Low | `.dockerignore` does not exclude `secrets/` (encrypted, but any `*.dec*` left behind would be copied into the builder layer) or `.claude/` (≈2 200 files). | `.dockerignore` | Add `secrets/` and `.claude/`. |
