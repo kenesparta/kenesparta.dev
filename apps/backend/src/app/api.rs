@@ -40,7 +40,11 @@ pub async fn get_published_posts(
     container()?
         .blog
         .list_published
-        .execute(limit.unwrap_or(10))
+        // Public input (SECURITY.md SEC-012): whatever the client sends is
+        // folded into [1, 100] — the blog will not reach 100 posts soon, and
+        // the complete listings (sitemap, feed) are server-side callers of the
+        // use case, not of this function.
+        .execute(limit.unwrap_or(10).clamp(1, 100))
         .await
         .inspect_err(|error| tracing::error!(error = %error, "listing published posts failed"))
         .map_err(|_| ServerFnError::new(UNAVAILABLE))
@@ -99,8 +103,34 @@ mod tests {
         }
     }
 
-    fn broken_container() -> Container {
-        let repo: Arc<dyn BlogRepository> = Arc::new(Broken);
+    /// Repository double for the clamp test (SEC-012): any limit outside
+    /// [1, 100] reaching persistence means the boundary failed.
+    struct LimitProbe;
+
+    #[async_trait]
+    impl BlogRepository for LimitProbe {
+        async fn list_published(&self, limit: i32) -> Result<Vec<BlogPost>, RepositoryError> {
+            assert!(
+                (1..=100).contains(&limit),
+                "unclamped client limit reached the repository: {limit}"
+            );
+            Ok(Vec::new())
+        }
+        async fn find_by_slug(&self, _: &str) -> Result<Option<BlogPost>, RepositoryError> {
+            unreachable!("not part of the clamp test")
+        }
+        async fn find_by_id(&self, _: &str) -> Result<Option<BlogPost>, RepositoryError> {
+            unreachable!("not part of the clamp test")
+        }
+        async fn upsert(&self, _: &BlogPost) -> Result<(), RepositoryError> {
+            unreachable!("not part of the clamp test")
+        }
+        async fn delete_not_in(&self, _: &[String]) -> Result<Vec<String>, RepositoryError> {
+            unreachable!("not part of the clamp test")
+        }
+    }
+
+    fn container_of(repo: Arc<dyn BlogRepository>) -> Container {
         Container {
             blog: BlogUseCases {
                 list_published: Arc::new(ListPublishedPosts::new(repo.clone())),
@@ -126,21 +156,23 @@ mod tests {
         }
     }
 
-    /// Runs `call` inside a reactive owner that carries the container, the
-    /// way `handle_server_fns` provides it per request.
-    fn with_container<T>(call: impl FnOnce() -> T) -> T {
+    /// Runs `call` inside a reactive owner that carries a container over
+    /// `repo`, the way `handle_server_fns` provides it per request.
+    fn with_repo<T>(repo: Arc<dyn BlogRepository>, call: impl FnOnce() -> T) -> T {
         Owner::new().with(|| {
-            provide_context(broken_container());
+            provide_context(container_of(repo));
             call()
         })
     }
 
     #[test]
     fn repository_failures_are_opaque_to_clients() {
-        let list = with_container(|| resolve(get_published_posts(None)))
+        let list = with_repo(Arc::new(Broken), || resolve(get_published_posts(None)))
             .expect_err("the repository is broken");
-        let post = with_container(|| resolve(get_post_by_slug("any".to_owned())))
-            .expect_err("the repository is broken");
+        let post = with_repo(Arc::new(Broken), || {
+            resolve(get_post_by_slug("any".to_owned()))
+        })
+        .expect_err("the repository is broken");
         for error in [list.to_string(), post.to_string()] {
             assert!(
                 error.contains("service unavailable"),
@@ -154,6 +186,24 @@ mod tests {
                 !error.contains("blog_posts"),
                 "schema detail leaked: {error}"
             );
+        }
+    }
+
+    // SECURITY.md SEC-012: `limit` is client-controlled; the repository must
+    // only ever see it folded into [1, 100].
+    #[test]
+    fn client_limit_is_clamped() {
+        for limit in [
+            Some(i32::MAX),
+            Some(101),
+            Some(0),
+            Some(-5),
+            Some(i32::MIN),
+            None,
+        ] {
+            let posts = with_repo(Arc::new(LimitProbe), || resolve(get_published_posts(limit)))
+                .unwrap_or_else(|_| panic!("limit {limit:?} should succeed"));
+            assert!(posts.is_empty());
         }
     }
 
