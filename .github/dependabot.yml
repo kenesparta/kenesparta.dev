@@ -1,0 +1,47 @@
+# Dependabot keeps the pins fresh (SECURITY.md SEC-003 / SEC-007): the Actions'
+# commit SHAs and their `# vX.Y.Z` comments, Cargo.lock, the Playwright
+# lockfile, and the Docker base images. Everything is weekly and grouped so a
+# quiet week costs at most one PR per ecosystem; `audit.yml` runs on each PR.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # One PR for all semver-compatible bumps; a major bump gets its own PR
+    # because it usually needs code changes (leptos, axum, sqlx…).
+    groups:
+      cargo-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 5
+    # wasm-bindgen is pinned "=0.2.104" to the CLI bundled with cargo-leptos
+    # 0.2.46 (apps/backend/Cargo.toml); bumping one without the other breaks
+    # the hydrate build, so it is done by hand.
+    ignore:
+      - dependency-name: wasm-bindgen
+
+  - package-ecosystem: npm
+    directory: /apps/backend/end2end
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      playwright:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday

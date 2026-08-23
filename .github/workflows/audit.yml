@@ -1,3 +1,9 @@
+# Actions are pinned to full commit SHAs, never to tags (SECURITY.md SEC-003):
+# a tag can be moved to a malicious commit by whoever controls the action's
+# repo — which, for the publish workflow, would be a direct path to production.
+# The trailing comment is the release the SHA was taken from; Dependabot
+# (.github/dependabot.yml) bumps both together. The repository setting
+# "require SHA pinning" rejects any workflow that regresses to a tag.
 name: audit
 
 on:
@@ -33,11 +39,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Prebuilt binary (installing via cargo would compile for minutes).
       - name: Install cargo-audit
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@288e746965032cfcc232e09af2daf5f23c14d780 # v2.86.1
         with:
           tool: cargo-audit
 
