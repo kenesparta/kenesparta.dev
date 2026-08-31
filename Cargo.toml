@@ -51,7 +51,7 @@ sqlx = { version = "0.9.0", default-features = false, features = [
 
 # Ingest CLI only (feature `ingest` in apps/backend).
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
-toml = "0.8"
+toml = "1"
 
 # Hydration-only (wasm artifact). Pinned to the exact version whose bindgen
 # schema matches the wasm-bindgen CLI bundled with cargo-leptos 0.2.46.
