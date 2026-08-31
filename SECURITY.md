@@ -401,11 +401,85 @@ lines. After the apply, re-read the role and confirm
   sts:AssumeRoleWithWebIdentity`. Adding the id-form spellings for `typst-resume` mirrors the
   scoping commit `8f19d8e` in personal-infra.
 
+### SEC-014 — A yanked transitive turned the weekly audit red; pins drifted for a week
+
+**Severity:** Low · **Status:** Fixed 2026-08-31 · **Where:** `Cargo.lock`, `Cargo.toml`,
+`Dockerfile`, `Dockerfile.dev`, `.github/workflows/*.yml`
+
+**Finding.** The scheduled `audit.yml` run of 2026-08-31 (33393110703) **failed**: `chacha20
+0.10.1` had been yanked upstream and sat in the graph via `rand 0.10.2` ← `sqlx-postgres 0.9.0`.
+No vulnerability — a yank, caught exactly as SEC-007 intended when it turned `--deny yanked` on;
+this is the control firing, not a gap. Alongside it, a week of unattended drift: the
+`rust:1.98-bookworm` digest had moved (the tag was rebuilt 2026-08-25 over a newer
+`buildpack-deps:bookworm`, so the pin was holding the build on an older Debian package set), the
+five pinned Actions were behind, and all five Dependabot PRs (#1–#5) were closed unmerged on
+2026-08-31 in favour of one reviewed manual pass — the SEC-007 precedent.
+
+**Change.** All applied by hand and verified together:
+- **Yanked crate:** `cargo update -p chacha20` → 0.10.2 (0.10.0 and 0.10.1 are both yanked; 0.10.2
+  is the only clean 0.10.x). One package, no other movement.
+- **Cargo group** (what Dependabot #3 had batched): `tokio 1.52.3 → 1.53.1`,
+  `async-trait 0.1.89 → 0.1.92`, `serde_json 1.0.150 → 1.0.151`, `thiserror 2.0.18 → 2.0.20`,
+  `uuid 1.23.5 → 1.26.0`. `async-trait` and `thiserror-impl` bring `syn 3.0.4` (proc-macro only).
+- **`toml 0.8 → 1`** (Dependabot #4). The crate has exactly one caller,
+  `toml::from_str` in `bin/ingest.rs`; `from_str` is unchanged in 1.x. This also **de-duplicated**
+  the lockfile — 0.8 and 1.1 were both present — dropping `toml_edit`, `toml_write`,
+  `toml_datetime 0.6`, `serde_spanned 0.6` and `winnow 0.7`. Net: 375 → 371 crates.
+- **Docker base** (Dependabot #5): the `rust:1.98-bookworm` digest `e70e2eec…` → `82150a52…` in
+  **both** `Dockerfile` and `Dockerfile.dev`, keeping them identical as SEC-006 requires. The
+  distroless `cc-debian12` digest was re-checked against the live tag and is **unchanged**, so it
+  stays. cargo-leptos stays at **0.2.46** deliberately — see the follow-up.
+- **Action pins** (Dependabot #2), each SHA resolved from its release tag through the GitHub API
+  and confirmed to be a commit object, SHA and `# vX.Y.Z` comment moved together:
+  `docker/login-action` v3.7.0 → **v4.6.0**, `docker/setup-buildx-action` v3.12.0 → **v4.3.0**,
+  `docker/build-push-action` v6.19.2 → **v7.3.0**, `taiki-e/install-action` v2.86.1 → **v2.86.7**.
+  `actions/checkout` was already at the current v7.0.1. The three Docker majors are all the same
+  upstream change — Node 24 runtime, ESM, and removal of deprecated inputs/envs; the workflow was
+  read against those removals and uses none of them (`setup-buildx` is invoked with no inputs at
+  all, and neither `DOCKER_BUILD_NO_SUMMARY` nor `DOCKER_BUILD_EXPORT_RETENTION_DAYS` appears),
+  so the majors are inert here. `install-action` is v2.86.7 (2026-08-24), not the current v2.87.2
+  (2026-08-30): SEC-003 deliberately takes a week-old release of this action rather than a fresh
+  cut, and that rule is kept.
+
+**Verification.** `cargo audit --deny yanked --deny unsound` exits **0** (previously 1), leaving
+only the two known `unmaintained` warnings that arrive through leptos. `cargo check --locked`
+passes for `ssr` and for `hydrate` on `wasm32-unknown-unknown`; **10/10** unit tests pass,
+including the SEC-004, SEC-005 and SEC-012 regression tests; `make blog/build` (`--locked`,
+`DATABASE_URL` stripped) links the new `toml`. Because the ingest connects to Postgres *before* it
+parses, compiling proves nothing about parsing — so `toml 1.1.4` was run against the real
+`content/posts/*.md` frontmatter in isolation, confirming the inline comment after
+`status = "draft"`, the `default_author` fallback, the tags array and `deny_unknown_fields` all
+still behave. The lockfile delta was diffed package-by-package against its baseline: every
+addition and removal above is accounted for and nothing else moved. Both new image digests were
+re-resolved from their live tags; the new rust index is the official `rust-lang/docker-rust`
+build of 2026-08-25 and carries a `linux/amd64` manifest.
+
+**Follow-ups.**
+- The **Docker image was not built** as part of this change — the local Docker daemon was down —
+  and the Playwright e2e suite was not run for the same reason (it needs the dev database). Both
+  are exercised by the next `v*` tag; the first release after this commit is worth watching rather
+  than assuming, since it is the first to run the three Docker action majors.
+- **cargo-leptos stays on 0.2.46** (0.3.7 is current) as a deliberate security decision, not
+  neglect. 0.2.x carries `wasm-bindgen-cli-support` as a compiled-in Cargo dependency, so the
+  pinned installer sha256 covers the whole chain down to the bindgen binary. 0.3.x dropped that
+  dependency: it reads the wasm-bindgen version out of `Cargo.lock` and **downloads the matching
+  CLI tarball from GitHub releases at build time** (`src/ext/exe.rs:618`, `:677`), which would put
+  an unverified binary back inside the Docker builder — precisely what SEC-006 closed. Revisit
+  only with a way to pin that download; the payoff would be dropping the manual
+  `wasm-bindgen = "=0.2.104"` coupling.
+- `paste` and `proc-macro-error2` remain `unmaintained` warnings via leptos (SEC-007), unchanged.
+
 ## Open findings
 
-**SEC-013** is Pending (see above) — the trust-policy fix is planned in `../personal-infra` and
-awaits `make apply`. Every finding of the 2026-08-23 audit (SEC-001 … SEC-012) is closed above.
-New findings get the next id and start here until fixed or accepted.
+**SEC-013** is Pending (see above), and its status is now **stale in this repository's favour**:
+the Terraform change landed in `../personal-infra` as `58c0c95` ("fix: drop kenesparta.dev from
+the deploy role's OIDC trust", 2026-08-23) and `terraform/iam.tf` now lists `typst-resume`
+subjects only. What is *not* confirmed is whether `make apply` has since pushed that to AWS — the
+check needs a live session (`make login` in personal-infra) and no valid one was available on
+2026-08-31 (`aws sts get-caller-identity` → `InvalidClientTokenId`). Run
+`aws iam get-role --role-name github-actions-ecr-ecs-deploy` and, if the trust policy names only
+`typst-resume`, flip SEC-013 to Fixed. Every other finding (SEC-001 … SEC-012, SEC-014) is closed
+above. New findings get the next id and start here until fixed or accepted.
 
 ## Supply-chain verification record — 2026-08-23
 
