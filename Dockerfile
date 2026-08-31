@@ -1,7 +1,7 @@
 # Tag AND digest (SECURITY.md SEC-006): the digest is what is pulled — a moved
 # or re-uploaded tag cannot change the build — and the tag keeps it readable.
 # Dependabot (docker ecosystem) bumps both together.
-FROM rust:1.98-bookworm@sha256:e70e2eec3d495fd5c8e0be74adda86507dfac7f51a724fbf9813ff59b2b247c7 AS site-builder
+FROM rust:1.98-bookworm@sha256:82150a52ec202c1b14d7817e14516c392bb7f5cfebd88f1ed531cb37ebd39922 AS site-builder
 
 RUN rustup target add wasm32-unknown-unknown
 # cargo-leptos 0.2.46 bundles the wasm-bindgen CLI 0.2.104, which MUST match the
