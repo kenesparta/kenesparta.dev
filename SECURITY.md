@@ -363,10 +363,9 @@ Reverting the clamp makes it fail ("unclamped client limit reached the repositor
 
 ### SEC-013 — The migrated OIDC deploy role still trusted this repository
 
-**Severity:** Medium · **Status:** Pending — the Terraform change is written and planned in
-`../personal-infra` (`tf.plan`: 0 add / 1 change / 0 destroy); blocked on `make apply` there ·
-**Where:** AWS IAM role `github-actions-ecr-ecs-deploy`, fixed via `../personal-infra`
-(`terraform/iam.tf`, spec AD-5)
+**Severity:** Medium · **Status:** Fixed 2026-08-31 (applied in `../personal-infra` as
+`58c0c95`, confirmed live in AWS) · **Where:** AWS IAM role `github-actions-ecr-ecs-deploy`,
+fixed via `../personal-infra` (`terraform/iam.tf`, spec AD-5)
 
 **Finding.** Chasing SEC-002's follow-up with a live AWS session: the old pipeline's IAM role was
 never destroyed. Its state was migrated verbatim into personal-infra (AD-9, addresses preserved)
@@ -388,12 +387,23 @@ this repository — no workflow has referenced the role since SEC-002 deleted `A
 **Verification.** Before: enumerating all roles whose trust policy names
 `token.actions.githubusercontent.com` found exactly the two above, with this repository present
 only on `github-actions-ecr-ecs-deploy`. Plan reviewed: the only diff is the two removed `sub`
-lines. After the apply, re-read the role and confirm
-`aws iam get-role --role-name github-actions-ecr-ecs-deploy` lists `typst-resume` subjects only.
+lines. After: confirmed against live AWS on 2026-08-31 (SSO profile
+`AdministratorAccess-711387133796`, account 711387133796).
+`aws iam get-role --role-name github-actions-ecr-ecs-deploy` returns a trust policy whose `sub`
+list is exactly `repo:kenesparta/typst-resume:ref:refs/heads/main` and
+`…:ref:refs/tags/*` — the two `kenesparta.dev` entries are gone. The Before sweep was re-run over
+**every** role in the account: still exactly two federate through GitHub OIDC
+(`github-actions-ecr-ecs-deploy` → typst-resume, `github-actions-cnayp-bot-site` →
+cnayp-discord-bot), and no role's trust policy names `kenesparta.dev` at all. The Terraform code
+behind it landed as `58c0c95` in personal-infra, so state and reality agree.
 
 **Follow-ups.**
-- Run `make apply` in `../personal-infra` (the saved `tf.plan`), then flip this entry to Fixed.
-- Worth checking separately: GitHub has begun issuing **immutable** OIDC subject claims
+- ~~Run `make apply` in `../personal-infra` (the saved `tf.plan`), then flip this entry to
+  Fixed.~~ Done — applied and verified against live AWS on 2026-08-31 (see Verification).
+- Still open, and **not this repository's to fix** — carried here only because this audit found
+  it. The same live sweep confirmed the asymmetry below is real: `github-actions-cnayp-bot-site`
+  carries **both** subject spellings, while `github-actions-ecr-ecs-deploy` carries only the
+  plain one. GitHub has begun issuing **immutable** OIDC subject claims
   (`repo:kenesparta@8525741/<repo>@<id>:…` — see the `cnayp-bot` role's comment in `iam.tf`,
   which lists both spellings because the plain-name form was already being denied for that
   repo). `typst-resume`'s trust lists only the plain spelling; if its claims switch, the CV
@@ -471,15 +481,15 @@ build of 2026-08-25 and carries a `linux/amd64` manifest.
 
 ## Open findings
 
-**SEC-013** is Pending (see above), and its status is now **stale in this repository's favour**:
-the Terraform change landed in `../personal-infra` as `58c0c95` ("fix: drop kenesparta.dev from
-the deploy role's OIDC trust", 2026-08-23) and `terraform/iam.tf` now lists `typst-resume`
-subjects only. What is *not* confirmed is whether `make apply` has since pushed that to AWS — the
-check needs a live session (`make login` in personal-infra) and no valid one was available on
-2026-08-31 (`aws sts get-caller-identity` → `InvalidClientTokenId`). Run
-`aws iam get-role --role-name github-actions-ecr-ecs-deploy` and, if the trust policy names only
-`typst-resume`, flip SEC-013 to Fixed. Every other finding (SEC-001 … SEC-012, SEC-014) is closed
-above. New findings get the next id and start here until fixed or accepted.
+**None.** SEC-013 was the last one open and closed on 2026-08-31, verified against live AWS
+rather than against Terraform state — every finding of the 2026-08-23 audit (SEC-001 … SEC-012)
+plus SEC-013 and SEC-014 is now Fixed above.
+
+Two things are *tracked but not findings against this repository*, both recorded in full on their
+entries: `typst-resume`'s OIDC trust lists only the plain subject spelling and will break opaquely
+if GitHub switches it to the immutable form (SEC-013 follow-up, fixed in personal-infra, not
+here); and `paste`/`proc-macro-error2` remain `unmaintained` warnings arriving through leptos
+(SEC-007). New findings get the next id and start here until fixed or accepted.
 
 ## Supply-chain verification record — 2026-08-23
 
