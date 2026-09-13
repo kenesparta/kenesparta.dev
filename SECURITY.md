@@ -479,11 +479,85 @@ build of 2026-08-25 and carries a `linux/amd64` manifest.
   `wasm-bindgen = "=0.2.104"` coupling.
 - `paste` and `proc-macro-error2` remain `unmaintained` warnings via leptos (SEC-007), unchanged.
 
+### SEC-015 — TypeScript 7 stopped including `@types/node` implicitly; the week's pins reviewed
+
+**Severity:** Low · **Status:** Fixed 2026-09-13 · **Where:** `Cargo.lock`,
+`apps/backend/end2end/{package.json,pnpm-lock.yaml,tsconfig.json}`, `.github/workflows/audit.yml`
+
+**Finding.** The week's three Dependabot PRs (#6 actions, #7 npm, #8 cargo), reviewed as SEC-003
+requires — a bumped pin is only as trustworthy as the release behind it — and applied as one manual
+pass on `main` with the PRs closed by the commits, the SEC-014 precedent. Two of the three are
+routine. The npm one crosses **two TypeScript majors** (5.9.3 → 7.0.2, the native compiler) and
+**six `@types/node` majors** (20 → 26), and TypeScript 6.0 changed the default of `types` from
+"every package under `node_modules/@types`" to `[]`. The e2e `tsconfig.json` relied on the old
+default: under 7.0.2, `tsc --noEmit` fails with three `TS2591: Cannot find name 'process'` in
+`playwright.config.ts`. Nothing in CI runs `tsc` — Playwright compiles the specs with its own
+pipeline — so merged as-is the bump would have degraded silently into editor errors and left the
+suite's only static check broken without anyone noticing.
+
+**Change.**
+- **Cargo group (#8):** `serde`/`serde_core`/`serde_derive` 1.0.228 → 1.0.229 (`serde_derive`
+  moves to `syn 3`; 3.0.4 was already in the lock via `async-trait`/`thiserror-impl` since SEC-014,
+  so no new crate), `toml` 1.1.4 → 1.1.5 (a `DeValue::make_owned` fix; the only caller is
+  `toml::from_str` in `bin/ingest.rs`), `tower-http` 0.7.0 → 0.7.1. Every 0.7.1 change lives in a
+  module this app does not use — `fs` (`ServeDir` now propagates I/O errors instead of answering
+  404; `leptos_axum`'s own `ServeDir` is tower-http **0.6.11**, untouched), `decompression`,
+  `request-id`, `set-header` — while this crate is used for `CompressionLayer` and `TraceLayer`
+  only, so the bump is inert. Side effect in the lock: `errno 0.3.14` and `winapi-util 0.1.11`
+  re-resolved `windows-sys` 0.52.0 → 0.61.2; both versions stay in the graph, both are Windows-only
+  and absent from the linux/amd64 image and the macOS builds. 371 → 371 crates.
+- **npm group (#7):** `typescript` 5.9.3 → 7.0.2 and `@types/node` 20.19.43 → 26.4.1 (the major of
+  the Node that runs the suite, 26.8.2 here), pulling `undici-types` 8.3.0 and the twenty
+  `@typescript/typescript-<os>-<arch>` optional platform binaries TS 7 ships as. Plus the fix:
+  `"types": ["node"]` in `tsconfig.json`, with a comment saying why. The rest of that config survives
+  7.0 — `target: es2016` (only ES5 went), `module: commonjs` (only amd/umd/system/none went),
+  `esModuleInterop: true` (`false` is now an error), `strict`, `skipLibCheck`.
+- **Actions group (#6):** `taiki-e/install-action` v2.86.7 → **v2.87.5** in `audit.yml`, SHA and
+  comment together. Released 2026-09-04 — nine days old, so the SEC-003 week-old rule holds;
+  v2.87.6 … v2.87.12 (2026-09-05 … 09-12) exist and were skipped for that reason. Between the two
+  pins the changelog is `@latest` manifest updates plus support for one new tool (`kache`, 2.87.0);
+  `cargo-audit@latest` did not move, so the job installs the same cargo-audit as before.
+
+**Verification.**
+- Pin: `5bf6ce01…` is the commit object tag `v2.87.5` points at (`Release 2.87.5`, Taiki Endo, an
+  ancestor of the action's `main`; unsigned, as every release commit of that action is,
+  `b6ff5808…` included). `audit.yml` ran on the PR with the new pin (run 34166118815) and passed —
+  the pin was exercised end to end, not just resolved.
+- Cargo: 8/8 lockfile checksums — the five bumped crates plus `syn 3.0.4`, `windows-sys 0.61.2`,
+  `http-range-header 0.4.2` — match the crates.io sparse index, and the publishers are the crates'
+  owners (`dtolnay` for serde and syn, `epage` for toml, `seanmonstar` for tower-http, `kennykerr`
+  for windows-sys); serde 1.0.229 dates from 2026-07-18, tower-http 0.7.1 from 2026-08-31, toml
+  1.1.5 from 2026-09-02. `cargo check --locked` passes for `ssr` and for `hydrate` on
+  `wasm32-unknown-unknown`; **13/13** unit tests pass (10 backend, 3 bc-blog); `make blog/build`
+  (`--locked`, `DATABASE_URL` stripped) links; `cargo audit --deny yanked --deny unsound` exits 0
+  with the two known `unmaintained` warnings. Cargo's four `future-incompat` warnings are all
+  `proc-macro-error2 2.0.1`, the same leptos transitive SEC-007 tracks at the same version — not
+  new. The PR's own audit run (34166139973) was green as well.
+- npm: **27/27** `sha512` integrity values in the new lockfile match `registry.npmjs.org`.
+  `@playwright/test`, `playwright`, `playwright-core` and `undici-types` carry npm provenance
+  attestations; `typescript`, its platform packages and `@types/node` do not (neither did 5.9.3).
+  Dependabot's "new releaser" note: 7.0.2 was pushed by `microsoft1es` (`npmjs@microsoft.com`),
+  5.9.3 by `typescript-bot`, 7.0.1-rc by `typescript-deploys` — all three sit in the package's
+  maintainer list, TS 7 is built and released from `microsoft/typescript-go`, and 7.0.2 has been
+  `latest` since 2026-07-08. With the fix `tsc --noEmit` exits 0 under 7.0.2 (1 without it);
+  `playwright test --list` still enumerates 54 tests in 3 files.
+- Not run: the Playwright suite itself, for the reason SEC-014 gives — the local Docker daemon was
+  down, so no dev database. The bump cannot change its behaviour: Playwright never loads the
+  `typescript` package, and `@types/node` is declarations only.
+
+**Follow-ups.**
+- Dependabot proposes this action weekly and each bump has to clear the week-old rule by hand:
+  v2.87.12 is the current tip and becomes eligible on 2026-09-19.
+- `@types/node` 26.5.1 was already `latest` at review time (Dependabot had resolved a week earlier)
+  and will come next week. Keep it on the major of the Node that runs the suite.
+- The e2e `tsconfig.json` is still the full `tsc --init` scaffold with every option commented out;
+  TS 7 tolerates it, but it could shrink to the seven options it actually sets. Cosmetic.
+
 ## Open findings
 
 **None.** SEC-013 was the last one open and closed on 2026-08-31, verified against live AWS
 rather than against Terraform state — every finding of the 2026-08-23 audit (SEC-001 … SEC-012)
-plus SEC-013 and SEC-014 is now Fixed above.
+plus SEC-013, SEC-014 and SEC-015 is now Fixed above.
 
 Two things are *tracked but not findings against this repository*, both recorded in full on their
 entries: `typst-resume`'s OIDC trust lists only the plain subject spelling and will break opaquely
