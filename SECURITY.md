@@ -553,11 +553,104 @@ suite's only static check broken without anyone noticing.
 - The e2e `tsconfig.json` is still the full `tsc --init` scaffold with every option commented out;
   TS 7 tolerates it, but it could shrink to the seven options it actually sets. Cosmetic.
 
+### SEC-016 — `rustls` TLS 1.3 advisory kept the audit red for 16 days; the week's pins reviewed
+
+**Severity:** Low · **Status:** Fixed 2026-09-30 · **Where:** `Cargo.lock`,
+`apps/backend/end2end/pnpm-lock.yaml`, `.github/workflows/{audit,publish-image}.yml`
+
+**Finding.** `cargo audit` has failed on every run since the evening of 2026-09-14 — four
+Dependabot PR runs and the scheduled `main` runs of 09-21 (35597087367) and 09-28 (36424986386) —
+on **RUSTSEC-2026-0285** (CVSS 5.3): `rustls` 0.23.13 … 0.23.44 accepted a plaintext TLS 1.3
+handshake message placed in the same record after a key-changing one (e.g. `EncryptedExtensions`
+behind `ServerHello`), against RFC 8446 §5.1. The transcript stays authenticated, so a
+network-position attacker cannot alter or complete a handshake with it; a peer just gets to skip
+encryption for those messages without the connection being torn down. The lock had `rustls
+0.23.41`, reached only through sqlx's `tls-rustls-aws-lc-rs` — the Postgres client, in the server
+and the ingest CLI. **Not reachable in practice:** personal-infra's `postgres:18` sets no `ssl`
+option (image default `ssl = off`, no certificate — `postgres_settings` in its
+`group_vars/all.yml`), and the `DATABASE_URL` its `env.j2` renders carries no `sslmode`, so sqlx's
+default `prefer` gets `N` to its `SSLRequest` and continues in plaintext on the internal `web`
+network; `rustls` never runs a handshake. The dev database is the same (`show ssl` → `off`). Hence
+Low, and fixed by upgrading rather than by an ignore in `.cargo/audit.toml`. The red scheduled
+runs went unaddressed for two weeks; it surfaced through the failing Dependabot PRs.
+Those three PRs (#10 npm, #12 actions, #13 cargo) were reviewed as SEC-003 requires and applied as
+one manual pass on `main`, the SEC-014 / SEC-015 precedent.
+
+**Change.**
+- **Advisory:** `cargo update -p rustls` → `rustls` 0.23.41 → **0.23.45**. It requires
+  `aws-lc-rs ^1.18` and `rustls-webpki ^0.103.14`, so `aws-lc-rs` 1.17.1 → 1.18.1, `aws-lc-sys`
+  0.42.0 → 0.45.0 (its `^0.45` requirement) and `rustls-webpki` 0.103.13 → 0.103.15 move with it —
+  forced, nothing else. 371 → 371 crates.
+- **Cargo group (#13):** `toml` 1.1.5 → 1.1.6 (parser/display allocation work; the only caller is
+  `toml::from_str` in `bin/ingest.rs`), `thiserror`/`thiserror-impl` 2.0.20 → 2.0.21 (a parsing fix
+  for generic unit variants in `#[error]` strings; the 1.0.69 copy leptos pulls is untouched),
+  `uuid` 1.26.0 → 1.26.1 (v7 counter placement, a `Timestamp` → `SystemTime` overflow panic). This
+  code calls only `Uuid::new_v4` and `Uuid::parse_str`, so the uuid fixes are inert here.
+- **npm group (#10):** `@playwright/test` / `playwright` / `playwright-core` 1.62.1 → 1.63.0 and
+  `@types/node` 26.4.1 → 26.5.1 (still the Node 26 major that runs the suite), with `undici-types`
+  8.3.0 → 8.9.0. Playwright 1.63 no longer lists `fsevents` as an optional dependency, so the lock
+  loses it: 27 → 26 packages. Lockfile only; `package.json` ranges already allowed both.
+- **Actions group (#12)**, SHA and `# vX.Y.Z` comment together:
+  `taiki-e/install-action` v2.87.5 → **v2.87.15** in `audit.yml`; `docker/setup-buildx-action`
+  v4.3.0 → **v4.4.1** and `docker/build-push-action` v7.3.0 → **v7.4.0** in `publish-image.yml`.
+  install-action v2.87.15 was released 2026-09-18, twelve days old, so the SEC-003 week-old rule
+  holds. The PR's pin is taken as is rather than re-resolved to v2.87.19 (2026-09-23, the newest
+  release a week old today): the rule sets a minimum age, not a newest-eligible target. Every
+  changelog line from v2.87.6 through v2.87.15 is an `Update <tool>@latest` manifest bump, and
+  `cargo-audit@latest` is not among them. The Docker minors add a BuildKit image pre-pull before
+  builder creation (skipped for explicit endpoints in 4.4.1), use official Buildx releases for the
+  cloud driver, and in build-push v7.4.0 **stop workflow-command injection through metadata log
+  output**. They remove no input or env var, and the workflow passes `setup-buildx` no inputs.
+
+**Verification.**
+- Pins: each SHA was resolved from its tag through the GitHub API, is a commit object and equals
+  the PR's: `4076c08d…` is `Release 2.87.15` (Taiki Endo, an ancestor of the action's `main`;
+  unsigned, like every release commit of that action); `f87e5991…` and `c3c9e263…` are
+  GitHub-verified signed merge commits, identical to each Docker repo's `master` HEAD. The PR's
+  own audit run could not exercise the install-action pin (it was red for the reason above); the
+  push of this change runs `audit.yml` with it.
+- Cargo: the group delta was diffed against PR #13 and is **identical** line for line. All 8
+  bumped checksums in the lock match the crates.io sparse index, and none of the versions is
+  yanked. Each was published by that crate's own maintainer: `ctz` (rustls, 2026-09-14), `cpu`
+  (rustls-webpki, 08-21), `justsmth` (aws-lc-rs and aws-lc-sys, 09-01), `epage` (toml, 09-10),
+  `KodrAus` (uuid, 09-10), `dtolnay` (thiserror, 09-23). `cargo audit --deny yanked --deny unsound`
+  exits **0**, down from 1, with only the two known `unmaintained` warnings. `cargo check --locked`
+  passes for `ssr` and for `hydrate` on `wasm32-unknown-unknown`. **13/13** unit tests pass
+  (10 backend, 3 bc-blog), and `make blog/build` links.
+- **Docker image built** this time (the daemon was up, unlike SEC-014/015): the production
+  `Dockerfile` compiled `aws-lc-sys` 0.45.0, `aws-lc-rs` 1.18.1, `rustls` 0.23.45 and
+  `rustls-webpki` 0.103.15 in the `rust:1.98-bookworm` builder with no new system packages, and
+  finished both the `release` and `wasm-release` profiles. That was a native arm64 build, not the
+  CI's linux/amd64, and the image was deleted afterwards.
+- Runtime: `make blog/ingest` against the dev database ran the migrations over the new sqlx/TLS
+  stack and parsed the real `content/posts/*.md` frontmatter with `toml` 1.1.6 (1 upserted). That
+  image then ran on the dev network against the same database: migrations applied, `/` and `/blog`
+  answered 200.
+- npm: **26/26** `sha512` integrity values in the new lock match `registry.npmjs.org`. The three
+  Playwright packages and `undici-types` carry npm provenance attestations (published from GitHub
+  Actions); `@types/node` does not, as before. `pnpm install --frozen-lockfile` is clean,
+  `tsc --noEmit` exits 0, and `playwright test --list` enumerates 54 tests in 3 files. **The suite
+  itself ran for the first time since SEC-014**, Playwright 1.63.0 on Chromium against the
+  image above: **16 passed, 2 skipped**. The two skips are the post-page tests, which skip by
+  design when the database has no published post (the dev DB holds one draft). Firefox and
+  WebKit were not run; their browsers are not installed locally.
+
+**Follow-ups.**
+- A new advisory looked exactly like "Dependabot PRs are failing CI" for two weeks. Check the
+  weekly scheduled `audit.yml` result as part of the Monday Dependabot pass. GitHub sends
+  scheduled-workflow failure notifications only to whoever last edited the cron line.
+- sqlx will attempt TLS the day the Postgres server offers it, with no client change. If
+  personal-infra ever enables `ssl` on the shared Postgres, set `sslmode=verify-full` in the
+  rendered `DATABASE_URL` rather than relying on `prefer`, which accepts an unauthenticated TLS
+  downgrade to plaintext.
+- `@types/node` 26.6.3 is current. Dependabot resolved #10 on 2026-09-14 and did not refresh it, so
+  the 26.6 line comes next week.
+
 ## Open findings
 
 **None.** SEC-013 was the last one open and closed on 2026-08-31, verified against live AWS
 rather than against Terraform state — every finding of the 2026-08-23 audit (SEC-001 … SEC-012)
-plus SEC-013, SEC-014 and SEC-015 is now Fixed above.
+plus SEC-013 … SEC-016 is now Fixed above.
 
 Two things are *tracked but not findings against this repository*, both recorded in full on their
 entries: `typst-resume`'s OIDC trust lists only the plain subject spelling and will break opaquely
