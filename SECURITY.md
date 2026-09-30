@@ -646,11 +646,67 @@ one manual pass on `main`, the SEC-014 / SEC-015 precedent.
 - `@types/node` 26.6.3 is current. Dependabot resolved #10 on 2026-09-14 and did not refresh it, so
   the 26.6 line comes next week.
 
+### SEC-017 — The home page discloses the running release tag and commit
+
+**Severity:** Low · **Status:** Accepted 2026-09-30 · **Where:** `.github/workflows/publish-image.yml`,
+`Dockerfile`, `apps/backend/src/app/{constants.rs,pages/home.rs}`
+
+**Finding.** The home page now ends in a footer naming the release and commit it was built from
+(`v0.5.3 · build 17b2c7e`), at the owner's request. On a closed-source service that is
+fingerprinting help: it maps the live site to a known version. Here it discloses almost nothing
+new. The repository is public, every release is a public signed tag, and the image already
+carries `org.opencontainers.image.source`. The one new fact is *which* release is live, i.e.
+whether a fix has rolled out yet. That window is the host's 10-minute poll (personal-infra
+AD-5), and the site has no login, admin surface or write path to aim at. Accepted on that basis.
+Revisit if the repository ever goes private.
+
+**Change.**
+- `publish-image.yml` passes `APP_VERSION=${{ github.ref_name }}` and `APP_BUILD=${{ github.sha }}`
+  as `build-args` of `docker/build-push-action`. No new action, permission, token or secret.
+- `Dockerfile` declares both as `ARG` just above the compile `RUN`, which sees them as environment
+  variables. They are not interpolated into its command text. `.git/` stays out of the build
+  context (SEC-010); the build args are how the build learns the tag and commit.
+- `app/constants.rs` reads them with `option_env!` at compile time into `APP_VERSION` (falling back
+  to `"dev"`) and `APP_BUILD` (`None`). Unset and empty both count as absent. `pages/home.rs` renders
+  them as one text node in `<footer class="home__footer">`, shortening the commit to seven
+  characters. Nothing is read at runtime.
+
+**Why the new inputs cannot inject anything.** `github.ref_name` can only be a tag the `on:` filter
+`v[0-9]+.[0-9]+.[0-9]+` admits (digits and dots; in Actions filter patterns `+` repeats the
+preceding character and `.` is literal). Only repository admins can create `v*` tags (SEC-008).
+`github.sha` is 40 hex characters. Both reach the action as `with:` inputs, never through a
+`run:` shell. Inside the build they are plain environment variables of a `RUN` that does not
+mention them. In the page they are a compile-time `&'static str`, which Leptos escapes as text.
+
+**Verification.**
+- The production `Dockerfile` was built locally with `--build-arg APP_VERSION=v0.0.0
+  --build-arg APP_BUILD=<HEAD>` (native arm64, not CI's linux/amd64) and run against the dev
+  database. The SSR HTML of `/` carries `<footer class="home__footer">v0.0.0 · build 17b2c7e</footer>`.
+  `/about` and `/blog` have no footer.
+- Both values, the version and the full 40-character commit, are present in the image's
+  `kenespartadev.wasm`, so the hydrate build saw the same build args as the server build.
+- Hydration: `/` hydrates with no console error or warning. Navigating from `/about` to `/` by its
+  link made **zero** document requests, so `HomePage` was rendered by the wasm alone, and it
+  rendered the identical footer.
+- Tests: 12/12 backend unit tests, including two new `release_stamp` tests (full commit
+  shortened to seven characters; no commit → version only). The Chromium e2e suite passed 19 with
+  2 skipped against that image. The 19 include three new tests: the stamp is on `/` in either
+  its `dev` or its `vX.Y.Z · build <7 hex>` form, and absent from `/about` and `/blog`. The two
+  skips are the post-page tests, as in SEC-016. `cargo fmt --check`, the `hydrate` wasm check and
+  `tsc --noEmit` are clean. Clippy's one warning (`result_large_err`, `seo.rs:246`) predates this
+  change.
+- The workflow side runs only on the next `v*` tag. That release's footer is its verification: it
+  must read `vX.Y.Z · build <first 7 of the tagged commit>`.
+
+**Follow-ups.** None. The unstamped path (local `cargo leptos watch`, `Dockerfile.dev`, a
+`docker build` without args) renders `dev`. The constants treat unset and empty build args alike,
+so it does not matter which one Docker produces for an `ARG` given no value.
+
 ## Open findings
 
 **None.** SEC-013 was the last one open and closed on 2026-08-31, verified against live AWS
 rather than against Terraform state — every finding of the 2026-08-23 audit (SEC-001 … SEC-012)
-plus SEC-013 … SEC-016 is now Fixed above.
+plus SEC-013 … SEC-016 is now Fixed above, and SEC-017 is Accepted.
 
 Two things are *tracked but not findings against this repository*, both recorded in full on their
 entries: `typst-resume`'s OIDC trust lists only the plain subject spelling and will break opaquely

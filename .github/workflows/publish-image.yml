@@ -61,6 +61,12 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:${{ github.ref_name }}
             ${{ env.IMAGE }}:latest
+          # The home-page footer's release stamp (Dockerfile ARGs). ref_name is
+          # the tag this run was triggered by, which the `on:` filter limits
+          # to vX.Y.Z; both go in as action inputs, never through a shell.
+          build-args: |
+            APP_VERSION=${{ github.ref_name }}
+            APP_BUILD=${{ github.sha }}
           # No build cache, deliberately. This workflow only runs on tags, and
           # Actions caches are ref-scoped: each run wrote its cache under
           # refs/tags/vX.Y.Z, which the next tag's run can never restore from.

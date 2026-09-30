@@ -20,6 +20,13 @@ WORKDIR /app
 # Contexts under crates/.
 COPY . .
 
+# Release stamp for the home-page footer (src/app/constants.rs): the tag and
+# commit, passed by publish-image.yml because .git/ is not in the context.
+# ARGs reach the RUN below as environment variables, where option_env! reads
+# them at compile time. Unset in local builds, which render "dev".
+ARG APP_VERSION
+ARG APP_BUILD
+
 # Build the CSS bundle from its parts (no Sass), then compile the app.
 RUN cat apps/backend/style/parts/*.css > apps/backend/style/main.css \
  && cd apps/backend && cargo leptos build --release

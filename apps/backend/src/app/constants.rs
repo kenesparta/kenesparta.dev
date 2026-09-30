@@ -16,6 +16,20 @@ pub const LINKEDIN_URL: &str = "https://linkedin.com/in/kenesparta";
 // /about, and declared as `email` in the Person JSON-LD.
 pub const EMAIL: &str = "kenesparta@pm.me";
 
+// Release stamp shown in the home-page footer. publish-image.yml passes the
+// tag and commit as Docker build args (the build context excludes .git/, so
+// the build cannot ask git) and option_env! reads them at compile time — into
+// the server binary and the wasm bundle alike, so the hydrated footer matches
+// the SSR one. Local builds have neither and show "dev".
+pub const APP_VERSION: &str = match option_env!("APP_VERSION") {
+    Some(version) if !version.is_empty() => version,
+    _ => "dev",
+};
+pub const APP_BUILD: Option<&str> = match option_env!("APP_BUILD") {
+    Some(commit) if !commit.is_empty() => Some(commit),
+    _ => None,
+};
+
 pub const GLOBAL_FONTS: &[&str] = &[
     "solway-v19-latin-regular.woff2",
     "solway-v19-latin-700.woff2",

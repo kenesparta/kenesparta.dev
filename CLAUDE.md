@@ -332,6 +332,12 @@ Environment variables for production:
 - `DATABASE_URL` — injected at runtime from the host's root-owned `.env` (rendered by Ansible from its Vault);
   never baked into the image and never sourced from this repo's `secrets/`
 
+Build args (compile time, not runtime env):
+- `APP_VERSION` / `APP_BUILD` — the release tag and commit SHA, passed by `publish-image.yml` and read by
+  `option_env!` in `app/constants.rs` for the home-page footer (`v0.5.3 · build 17b2c7e`). Compiled into the
+  server binary and the wasm bundle alike, so hydration matches. `.git/` is not in the build context, so there is
+  no other way to learn them; local and dev builds leave them unset and render `dev` (SECURITY.md SEC-017)
+
 ### Production Topology (personal-infra)
 
 Request path: `kenesparta.dev` (Route 53 apex ALIAS) → CloudFront (ACM cert, `Managed-CachingDisabled` — pure
