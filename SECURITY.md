@@ -695,8 +695,12 @@ mention them. In the page they are a compile-time `&'static str`, which Leptos e
   skips are the post-page tests, as in SEC-016. `cargo fmt --check`, the `hydrate` wasm check and
   `tsc --noEmit` are clean. Clippy's one warning (`result_large_err`, `seo.rs:246`) predates this
   change.
-- The workflow side runs only on the next `v*` tag. That release's footer is its verification: it
-  must read `vX.Y.Z · build <first 7 of the tagged commit>`.
+- Workflow side, verified on the first release to use it, **v0.5.4** (2026-09-30, tag on
+  `3ebfac7`). Publish run 36765713015 passed `--build-arg APP_VERSION=v0.5.4 --build-arg
+  APP_BUILD=3ebfac75…` to `docker buildx build` and pushed `:v0.5.4` and `:latest` as
+  `sha256:9ee5609c…d242a`. At 19:40:58Z, eight minutes after the push (the host's poll), the live
+  `https://kenesparta.dev/` served `<footer class="home__footer">v0.5.4 · build 3ebfac7</footer>`.
+  Live `/about` and `/blog` carry no footer.
 
 **Follow-ups.** None. The unstamped path (local `cargo leptos watch`, `Dockerfile.dev`, a
 `docker build` without args) renders `dev`. The constants treat unset and empty build args alike,
