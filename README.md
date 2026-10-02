@@ -175,7 +175,7 @@ docker run -p 3000:3000 kenespartadev
 ```
 
 The multi-stage Dockerfile:
-1. **Builder**: Uses `rust:1.98`, installs cargo-leptos, builds release binary
+1. **Builder**: Uses `rust:1.99`, installs cargo-leptos, builds release binary
 2. **Runtime**: Uses distroless image, runs as non-root user
 
 ## Infrastructure
