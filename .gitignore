@@ -2,6 +2,7 @@
 .vscode/
 .DS_Store
 .claude/skills
+.agents/skills
 
 # Never commit decrypted secrets. The *.enc.env files ARE safe to commit.
 secrets/*.dec*
