@@ -787,11 +787,46 @@ request to pin and harden the Python dependencies.
 - Review the first `uv` Dependabot PR as SEC-003 requires. It is the first time this lockfile
   changes outside a reviewed pass.
 
+### SEC-019 — Dependabot proposed an install-action release younger than the week-old rule
+
+**Severity:** Low · **Status:** Fixed 2026-10-04 · **Where:** `.github/workflows/audit.yml`,
+`.github/dependabot.yml`
+
+**Finding.** Dependabot PR #14 moved `taiki-e/install-action` in `audit.yml` from v2.87.15 to
+v2.87.22, released 2026-09-29: five days old at review, so it fails the SEC-003 week-old rule for
+this action. The release itself is clean (below). The gap is that the rule lived only in review:
+the `github-actions` entry had no cooldown, so Dependabot always proposed the newest cut and the
+rule had to be re-applied by hand each time (SEC-015's follow-up already said so). PR #14 was
+opened by the SEC-018 push changing `dependabot.yml`, not by the Monday schedule.
+
+**Change.**
+- PR #14 retargeted to **v2.87.21** (`4cef1412…`, released 2026-09-26, eight days old) and
+  squash-merged, SHA and `# v2.87.21` comment together. For this job the two releases are the same:
+  everything between them is other tools' `@latest` manifests.
+- `.github/dependabot.yml`: the `github-actions` entry gets `cooldown: default-days: 7`, the same
+  window as the `uv` entry (SEC-018). Dependabot now proposes only releases at least a week old,
+  for all five pinned actions, so the rule is enforced where the PRs come from. The cooldown
+  applies to version updates only; a Dependabot security update still arrives at once.
+
+**Verification.**
+- v2.87.21: the tag resolves through the GitHub API to commit `4cef1412…` (a commit object),
+  `Release 2.87.21` by Taiki Endo, an ancestor of the action's `main`. It is unsigned, like every
+  release commit of this action (SEC-016). From the old pin to it: 47 commits, all by `taiki-e`,
+  touching only `CHANGELOG.md` and files under `manifests/`; `cargo-audit`'s manifest is not among
+  them, so the job installs the same cargo-audit as before.
+- v2.87.22, rejected for age only: its tag resolves to `83ac0ad6…`, the PR's SHA, and its 13
+  further commits are likewise changelog and manifests. It turns a week old on 2026-10-06.
+- The PR's `cargo-audit` job ran green with the v2.87.21 pin, and `.github/dependabot.yml`
+  validates against the schemastore Dependabot schema with both cooldowns.
+
+**Follow-ups.** None. The `cargo` and `docker` entries keep no cooldown: the week-old rule was
+only ever stated for actions, and crate bumps get the lockfile review of SEC-014 … SEC-016.
+
 ## Open findings
 
 **None.** SEC-013 was the last one open and closed on 2026-08-31, verified against live AWS
 rather than against Terraform state — every finding of the 2026-08-23 audit (SEC-001 … SEC-012)
-plus SEC-013 … SEC-016 and SEC-018 is now Fixed above, and SEC-017 is Accepted.
+plus SEC-013 … SEC-016, SEC-018 and SEC-019 is now Fixed above, and SEC-017 is Accepted.
 
 Two things are *tracked but not findings against this repository*, both recorded in full on their
 entries: `typst-resume`'s OIDC trust lists only the plain subject spelling and will break opaquely
