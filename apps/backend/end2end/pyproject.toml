@@ -1,0 +1,43 @@
+# End-to-end suite: pytest-playwright, managed by uv (SECURITY.md SEC-018).
+# `cargo leptos end-to-end` builds and starts the server, then runs
+# `end2end-cmd` from ../Cargo.toml in this directory. Against a server that is
+# already up: `uv run --locked pytest`. Browsers once per Playwright version:
+# `uv run --locked playwright install chromium`.
+[project]
+name = "end2end"
+version = "0.1.0"
+description = "Playwright end-to-end tests for kenesparta.dev"
+# Minor pin, patch floats: Python patch releases are security fixes. Same
+# convention as rust-toolchain.toml.
+requires-python = "==3.14.*"
+# Exact pins (SEC-018). Transitive dependencies are pinned, with the sha256 of
+# every file, in uv.lock; `--locked` refuses to run when the two disagree.
+# Dependabot (uv ecosystem) bumps the pin and the lock together.
+dependencies = [
+    "playwright==1.63.0",
+    "pytest==9.1.1",
+    "pytest-playwright==0.9.0",
+]
+
+[tool.uv]
+# A test suite, not an installable package: uv syncs the dependencies only.
+package = false
+# Wheels only. Building an sdist runs its setup.py / build backend, i.e.
+# arbitrary third-party code at install time (the SEC-001 concern, for
+# Python). Every locked package ships a wheel for cp314 on macOS, Linux and
+# Windows, so this costs nothing; a dependency that only offers an sdist now
+# fails the lock instead of executing.
+no-build = true
+# Cooldown: never resolve a release younger than 7 days, the window in which
+# compromised uploads are usually caught and yanked. The SEC-003 "week-old
+# release" rule, enforced by the resolver; Dependabot's `cooldown` matches it.
+exclude-newer = "7 days"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Overridable per run, e.g. `--base-url http://localhost:3001`.
+base_url = "http://localhost:3000"
+# -ra prints skip reasons (the post-page tests skip when the database has no
+# published post); a failing test keeps its trace in test-results/, open it
+# with `uv run playwright show-trace <trace.zip>`.
+addopts = "-ra --tracing retain-on-failure"

@@ -31,11 +31,16 @@ updates:
     ignore:
       - dependency-name: wasm-bindgen
 
-  - package-ecosystem: npm
+  - package-ecosystem: uv
     directory: /apps/backend/end2end
     schedule:
       interval: weekly
       day: monday
+    # Must match `exclude-newer = "7 days"` in pyproject.toml (SEC-018): a
+    # release younger than that cannot be locked, so proposing one would only
+    # produce a failing PR.
+    cooldown:
+      default-days: 7
     groups:
       playwright:
         patterns: ["*"]

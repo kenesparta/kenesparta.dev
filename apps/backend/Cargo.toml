@@ -92,8 +92,10 @@ style-file = "style/main.css"
 assets-dir = "public"
 site-addr = "0.0.0.0:3000"
 reload-port = 3001
-end2end-cmd = "pnpm exec playwright test"
-end2end-dir = "end2end"
+end2end-cmd = "uv run --locked pytest"
+# Relative to the workspace root, not to this package: cargo-leptos chdirs to
+# the workspace root before running end2end-cmd.
+end2end-dir = "apps/backend/end2end"
 browserquery = "defaults"
 env = "DEV"
 wasm-opt = true

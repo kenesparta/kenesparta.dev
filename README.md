@@ -8,7 +8,7 @@ Personal portfolio website built with Leptos (Rust full-stack web framework), de
 - **Web Server**: [Axum 0.8.0](https://github.com/tokio-rs/axum) - Rust web framework
 - **Compression**: tower-http with Brotli and Gzip support
 - **Styling**: plain CSS — `style/parts/*.css` concatenated into `style/main.css` by `make css` (no Sass), minified by cargo-leptos via lightningcss
-- **Testing**: Playwright for end-to-end tests
+- **Testing**: Playwright (Python, pytest-playwright via uv) for end-to-end tests
 - **Database**: PostgreSQL (Lightsail managed database) via SQLx — blog posts authored as Markdown in `content/posts/`
 - **Secrets**: [sops](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age) — encrypted dotenv files committed under `secrets/`
 - **Infrastructure**: Terraform (AWS Lightsail Containers, CloudFront, Route53, ACM)
@@ -45,9 +45,8 @@ Leptos App (Axum + Brotli)   →  Lightsail PostgreSQL (blog)
 
 ### For Testing
 
-- **Node.js**: v18+ (for Playwright)
-- **pnpm**: the package manager for the Playwright suite (`corepack enable`, or install from pnpm.io)
-- **Playwright**: `cd apps/backend/end2end && pnpm install`
+- **uv**: runs the Playwright suite (it installs Python 3.14 and the locked dependencies itself)
+- **Playwright browser**: `cd apps/backend/end2end && uv run --locked playwright install chromium`
 
 ## Getting Started
 
@@ -90,6 +89,16 @@ cargo leptos end-to-end
 
 # Release mode
 cargo leptos end-to-end --release
+```
+
+`cargo leptos end-to-end` starts the server and runs `uv run --locked pytest` in `end2end/`
+(it needs `DATABASE_URL`, like the dev server). Against a server that is already running:
+
+```bash
+cd apps/backend/end2end
+uv run --locked pytest                      # chromium, headless
+uv run --locked pytest --headed -k blog     # watch a subset
+uv run --locked pytest --browser firefox    # after `playwright install firefox`
 ```
 
 ## Secrets (sops + age)
@@ -223,7 +232,7 @@ make dev/destroy # Destroy resources
 │       ├── migrations/    # SQLx migrations (embedded in the binary)
 │       ├── style/         # parts/*.css (source) → main.css (via make css)
 │       ├── public/        # Static assets
-│       └── end2end/       # Playwright tests
+│       └── end2end/       # Playwright tests (Python, pytest + uv)
 ├── secrets/               # sops/age-encrypted dotenv files (safe to commit)
 ├── .sops.yaml             # sops creation rules (age recipients)
 ├── Dockerfile             # Multi-stage build (builds from apps/backend)

@@ -706,11 +706,92 @@ mention them. In the page they are a compile-time `&'static str`, which Leptos e
 `docker build` without args) renders `dev`. The constants treat unset and empty build args alike,
 so it does not matter which one Docker produces for an `ARG` given no value.
 
+### SEC-018 — The e2e suite moved from npm/pnpm to PyPI/uv, hardened on arrival
+
+**Severity:** Low · **Status:** Fixed 2026-10-03 · **Where:** `apps/backend/end2end/`,
+`apps/backend/Cargo.toml`, `.github/dependabot.yml`
+
+**Finding.** Not a vulnerability. It is a change of trust boundary, recorded because a lockfile and
+its Dependabot ecosystem are CI trust (SEC-003). At the owner's request the Playwright suite is
+now Python (`pytest-playwright`, sync API) managed by uv. Its dependencies come from PyPI instead
+of the npm registry, and the Node toolchain (pnpm, TypeScript, `@types/node`) leaves the
+repository. Nothing in it reaches the image: `.dockerignore` already excludes
+`apps/backend/end2end/` (SEC-010). Python packaging has two install-time risks the npm lock did not
+cover by default: an sdist runs its build backend (arbitrary code) when installed, and a resolver
+happily takes a release uploaded minutes ago. Both are closed in `pyproject.toml`, at the owner's
+request to pin and harden the Python dependencies.
+
+**Change.**
+- Removed `package.json`, `pnpm-lock.yaml`, `tsconfig.json`, `playwright.config.ts` and the three
+  `*.spec.ts`. Added `pyproject.toml`, `.python-version` (3.14), `uv.lock`, `tests/conftest.py`
+  and three `test_*.py` modules. It is a 1:1 port: 21 tests, the same selectors and the same
+  assertions, including the SEC-004 CSP/hydration checks and the open-redirect guard.
+- **Exact pins.** `playwright==1.63.0`, `pytest==9.1.1`, `pytest-playwright==0.9.0`. The 16
+  transitive packages are pinned in `uv.lock` with the sha256 of every file, and uv verifies those
+  hashes on every install. `requires-python = "==3.14.*"`: minor pin, patch floating, because
+  Python patch releases are security fixes (the `rust-toolchain.toml` convention).
+- **`--locked` everywhere.** `end2end-cmd = "uv run --locked pytest"`, and every documented
+  command uses it. A lockfile that no longer matches `pyproject.toml` fails the run instead of
+  being re-resolved, the posture of `cargo build --locked` and `pnpm install --frozen-lockfile`.
+- **Wheels only** (`[tool.uv] no-build = true`). uv will not build an sdist, so no third-party
+  `setup.py` or build backend ever runs on a developer machine (the SEC-001 concern, for Python).
+  It costs nothing: 17 of the 19 packages ship a pure-Python wheel, and `greenlet` and
+  `playwright` ship cp314 wheels for macOS arm64, Linux x86_64/aarch64 and Windows.
+- **7-day cooldown** (`[tool.uv] exclude-newer = "7 days"`). The resolver ignores any release
+  younger than a week, the window in which compromised uploads are usually caught and yanked. It
+  is the SEC-003 "week-old release" rule enforced by the tool rather than by review. uv records it
+  as a span (`exclude-newer-span = "P7D"`), not a date, so `--locked` keeps passing as time moves.
+  It applied at once: `charset-normalizer` 3.5.2 (uploaded 2026-09-30) was held back to 3.5.1.
+- `end2end-dir` → `apps/backend/end2end`. cargo-leptos changes into the workspace root before
+  spawning `end2end-cmd`, so the old `end2end` resolved to a directory that has not existed since
+  the 2026-07-12 workspace migration. `cargo leptos end-to-end` could not have run either suite.
+- Dependabot: the `npm` entry became `uv`, with the same directory and weekly grouped schedule,
+  plus `cooldown: default-days: 7` so it never proposes a release the lock would reject. No
+  Dependabot PR was open.
+- The open-redirect tests send absolute URLs on purpose. Resolved against `base_url`,
+  `//evil.com/` is protocol-relative, and the probe would go to evil.com instead of the app.
+
+**Verification.**
+- Lockfile: 19 third-party packages, all from `https://pypi.org/simple`, none yanked. All
+  **115/115** file hashes in `uv.lock` equal the sha256 PyPI's JSON API reports for that file.
+  The newest upload in the lock is `idna` 3.20 (2026-09-17). An OSV batch query and `uv audit
+  --locked` (experimental in uv 0.12.22) both report no vulnerabilities and no adverse status.
+- Wheels only: a probe project with this `pyproject.toml` plus the sdist-only `sgmllib3k==1.0.0`
+  fails to resolve ("building from source is disabled"). The same probe with `no-build = false`
+  builds and installs the sdist, so the setting is what blocks it.
+- `uv lock --locked` and `uv sync --locked` pass on the committed lock. `.github/dependabot.yml`
+  validates against the schemastore Dependabot schema (`check-jsonschema`), `cooldown` included.
+- `playwright` 1.63.0 is the same Playwright release the npm suite ran (SEC-016), so the cached
+  Chromium build 1243 was reused and no browser was downloaded.
+- `cargo leptos end-to-end` under the dev secrets built the app, started the server and ran
+  `uv run --locked pytest` on the hardened lock: **19 passed, 2 skipped**, identical to the npm
+  suite's last result (SEC-017). The skips are the post-page tests, because the dev database has
+  no published post. Port 3000 was released afterwards. Chromium only; Firefox and WebKit are not
+  installed locally, as before. `ruff check` and `ruff format --check` are clean (run once
+  through `uvx`, not a dependency).
+
+**Follow-ups.**
+- **Weaker provenance than npm had.** The npm Playwright packages carried npm provenance
+  attestations (SEC-016). On PyPI, `playwright` 1.63.0 and `pytest-playwright` 0.9.0 publish
+  none (the integrity API returns 404); `pytest` 9.1.1 has one from `pytest-dev/pytest`
+  `deploy.yml`. Hash pinning still guarantees every machine installs the same bytes, but nothing
+  ties those bytes to Microsoft's build. Re-check when either project adopts Trusted Publishing.
+- **No scheduled audit for the Python lock yet.** `audit.yml` audits only `Cargo.lock`. A
+  `uv audit --locked` job would mirror it, but it needs a uv install in CI (a new third-party
+  action to SHA-pin under SEC-003) and `uv audit` is still experimental. Until then, run it by
+  hand in the Monday Dependabot pass.
+- cargo-leptos 0.2.46 orphans the server it started when `end2end-cmd` fails to spawn. That
+  happened once here. The stale `target/debug/backend` kept :3000, and the next run's server
+  died with `AddrInUse` while its tests ran against the orphan. If a run logs `AddrInUse`, kill
+  the leftover process before trusting the result.
+- Review the first `uv` Dependabot PR as SEC-003 requires. It is the first time this lockfile
+  changes outside a reviewed pass.
+
 ## Open findings
 
 **None.** SEC-013 was the last one open and closed on 2026-08-31, verified against live AWS
 rather than against Terraform state — every finding of the 2026-08-23 audit (SEC-001 … SEC-012)
-plus SEC-013 … SEC-016 is now Fixed above, and SEC-017 is Accepted.
+plus SEC-013 … SEC-016 and SEC-018 is now Fixed above, and SEC-017 is Accepted.
 
 Two things are *tracked but not findings against this repository*, both recorded in full on their
 entries: `typst-resume`'s OIDC trust lists only the plain subject spelling and will break opaquely
