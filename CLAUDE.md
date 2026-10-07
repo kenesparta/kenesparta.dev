@@ -429,8 +429,10 @@ being re-resolved. There is no Node toolchain here: the `playwright` wheel bundl
 - `[tool.uv] exclude-newer = "7 days"` — the resolver ignores releases younger than a week (the
   SEC-003 week-old rule). Dependabot's `uv` entry has the matching `cooldown: default-days: 7`;
   change both or neither. A pin to a fresher release cannot lock until it ages past the window.
-- Audit by hand in the Monday Dependabot pass: `uv audit --locked` (experimental in uv 0.12;
-  `audit.yml` covers only `Cargo.lock`).
+- `audit.yml`'s `uv-audit` job runs `uv audit --frozen` weekly and on every change to
+  `pyproject.toml`/`uv.lock` (SEC-020), with uv pinned to an explicit version installed through the
+  same SHA-pinned `taiki-e/install-action`. `uv audit` does not flag yanked releases, so check
+  those by hand in the Monday Dependabot pass.
 
 Configuration lives in `[tool.pytest.ini_options]` in `pyproject.toml`, and fixtures are overridden
 in `conftest.py`, not in a config file:

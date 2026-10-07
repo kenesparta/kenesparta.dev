@@ -14,12 +14,16 @@ on:
       - "**/Cargo.toml"
       - "Cargo.lock"
       - ".cargo/audit.toml"
+      - "apps/backend/end2end/pyproject.toml"
+      - "apps/backend/end2end/uv.lock"
       - ".github/workflows/audit.yml"
   pull_request:
     paths:
       - "**/Cargo.toml"
       - "Cargo.lock"
       - ".cargo/audit.toml"
+      - "apps/backend/end2end/pyproject.toml"
+      - "apps/backend/end2end/uv.lock"
       - ".github/workflows/audit.yml"
   # New advisories appear without any code change: re-audit weekly.
   schedule:
@@ -55,3 +59,34 @@ jobs:
       # the reason and a SEC entry; do not loosen these flags.
       - name: Run cargo audit
         run: cargo audit --deny yanked --deny unsound
+
+  # The e2e suite's Python lock (SECURITY.md SEC-020), the counterpart of the
+  # job above for apps/backend/end2end/uv.lock.
+  uv-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The same pinned install-action as above, so no new action is trusted:
+      # it checks the uv binary against the sha256 in its own manifest. The
+      # version is explicit because `uv audit` is experimental and its output
+      # and exit codes may change between releases; Dependabot cannot bump a
+      # `tool:` input, so move it by hand (the version must exist in the pinned
+      # action's manifests/uv.json) after re-checking that a vulnerable lock
+      # still exits non-zero.
+      - name: Install uv
+        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+        with:
+          tool: uv@0.12.19
+
+      # --frozen audits uv.lock exactly as committed, like cargo audit reads
+      # Cargo.lock. --locked would also check the lock against pyproject.toml,
+      # but that needs a Python 3.14 interpreter, which uv would download onto
+      # the runner; the local `uv run --locked` already enforces it.
+      # Fails on any known vulnerability (OSV). Unlike the cargo job it does not
+      # fail on yanked releases: uv audit does not report them (SEC-020).
+      - name: Run uv audit
+        working-directory: apps/backend/end2end
+        run: uv audit --frozen --preview-features audit-command

@@ -776,7 +776,7 @@ request to pin and harden the Python dependencies.
   none (the integrity API returns 404); `pytest` 9.1.1 has one from `pytest-dev/pytest`
   `deploy.yml`. Hash pinning still guarantees every machine installs the same bytes, but nothing
   ties those bytes to Microsoft's build. Re-check when either project adopts Trusted Publishing.
-- **No scheduled audit for the Python lock yet.** `audit.yml` audits only `Cargo.lock`. A
+- **No scheduled audit for the Python lock yet** (done in SEC-020). `audit.yml` audits only `Cargo.lock`. A
   `uv audit --locked` job would mirror it, but it needs a uv install in CI (a new third-party
   action to SHA-pin under SEC-003) and `uv audit` is still experimental. Until then, run it by
   hand in the Monday Dependabot pass.
@@ -822,11 +822,63 @@ opened by the SEC-018 push changing `dependabot.yml`, not by the Monday schedule
 **Follow-ups.** None. The `cargo` and `docker` entries keep no cooldown: the week-old rule was
 only ever stated for actions, and crate bumps get the lockfile review of SEC-014 … SEC-016.
 
+### SEC-020 — The Python lock had no scheduled audit
+
+**Severity:** Low · **Status:** Fixed 2026-10-07 · **Where:** `.github/workflows/audit.yml`
+
+**Finding.** SEC-018's follow-up: `audit.yml` audited only `Cargo.lock`. A new advisory against a
+package in `apps/backend/end2end/uv.lock` would surface only if someone ran `uv audit` by hand. The
+SEC-016 lesson applies: an advisory nobody is told about stays open for weeks.
+
+**Change.**
+- `audit.yml` gets a `uv-audit` job next to `cargo-audit`, on the same triggers: the weekly
+  schedule, `workflow_dispatch`, and pushes/PRs touching the workflow, Cargo files or (new path
+  filters) `apps/backend/end2end/{pyproject.toml,uv.lock}`. Dependabot's `uv` PRs are therefore
+  audited before review, as the cargo ones are.
+- uv comes from the **same pinned `taiki-e/install-action`** (`4cef1412…`, v2.87.21), so no new
+  action is trusted and the repository's allowed-actions setting is unchanged. It verifies the uv
+  binary against the sha256 in its own bundled `manifests/uv.json`. The tool version is explicit,
+  `uv@0.12.19` (released 2026-09-25, past the week-old rule): `uv audit` is experimental, and an
+  unpinned tool could change its exit codes under the job. Dependabot cannot bump a `tool:` input,
+  so it moves by hand.
+- The step runs `uv audit --frozen`: it audits `uv.lock` exactly as committed, the way
+  `cargo audit` reads `Cargo.lock`. `--locked` would also check the lock against `pyproject.toml`,
+  but it needs a Python 3.14 interpreter (tested: it refuses to run without one), which uv would
+  download onto the runner. `uv run --locked` enforces lock freshness locally instead.
+
+**Verification.**
+- uv 0.12.19 (the exact version the job installs) was run in a stripped environment standing in
+  for the runner: no `.venv`, no Python 3.14 on `PATH`, Python downloads disabled. On the real lock
+  `uv audit --frozen` exits **0** ("no known vulnerabilities … in 19 packages"); on a probe project
+  locking `urllib3==1.26.4` it lists 22 advisories and exits **1**. So the job fails when it
+  should, and it needs no interpreter. Under the same conditions `uv audit --locked` and
+  `uv lock --check` exit 2 asking for Python 3.14.
+- 0.12.19 reads the committed lock (`revision = 5`, written by uv 0.12.22). The two `uv audit`
+  fixes in 0.12.20 … 0.12.22 (`--no-default-groups`, the offline error message) do not apply to
+  this project.
+- The workflow validates against the schemastore GitHub-workflow schema, and `actionlint` reports
+  nothing.
+
+**Follow-ups.**
+- **No yanked-release check.** `cargo-audit` runs `--deny yanked` (SEC-007); `uv audit` has no
+  equivalent. Its "adverse project statuses" are PEP 792 project-level states (quarantined,
+  archived, deprecated), not yanked releases. A probe locking the yanked `requests==2.32.0` got
+  only a `uv lock` warning. The exact pins make this more likely to matter: PEP 592 lets an `==` pin
+  keep resolving to a yanked release. Until uv reports yanks, check them in the Monday pass (PyPI's
+  JSON API, as SEC-018 did).
+- When bumping `uv@0.12.19`, re-run the vulnerable-lock probe first: the job's value rests on the
+  exit code.
+- While building the job, `actionlint` was run once through `uvx --from actionlint-py`, which
+  built that package from its sdist locally. That is the build-time code execution SEC-018 forbids
+  inside the project. It did not touch the repository or CI. Run one-off tools wheel-only
+  (`uvx --no-build …`). `actionlint-py` publishes no wheel (`--no-build` refuses it), so use
+  actionlint's own release binary for that check instead.
+
 ## Open findings
 
 **None.** SEC-013 was the last one open and closed on 2026-08-31, verified against live AWS
 rather than against Terraform state — every finding of the 2026-08-23 audit (SEC-001 … SEC-012)
-plus SEC-013 … SEC-016, SEC-018 and SEC-019 is now Fixed above, and SEC-017 is Accepted.
+plus SEC-013 … SEC-016 and SEC-018 … SEC-020 is now Fixed above, and SEC-017 is Accepted.
 
 Two things are *tracked but not findings against this repository*, both recorded in full on their
 entries: `typst-resume`'s OIDC trust lists only the plain subject spelling and will break opaquely
