@@ -47,7 +47,7 @@ jobs:
 
       # Prebuilt binary (installing via cargo would compile for minutes).
       - name: Install cargo-audit
-        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
           tool: cargo-audit
 
@@ -77,7 +77,7 @@ jobs:
       # action's manifests/uv.json) after re-checking that a vulnerable lock
       # still exits non-zero.
       - name: Install uv
-        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
         with:
           tool: uv@0.12.19
 
