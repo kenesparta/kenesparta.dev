@@ -874,11 +874,126 @@ SEC-016 lesson applies: an advisory nobody is told about stays open for weeks.
   (`uvx --no-build …`). `actionlint-py` publishes no wheel (`--no-build` refuses it), so use
   actionlint's own release binary for that check instead.
 
+### SEC-021 — Four `rustls` advisories landed hours after the week's PRs went green; the pins reviewed
+
+**Severity:** Low · **Status:** Fixed 2026-10-15 · **Where:** `Cargo.lock`, `Dockerfile`,
+`Dockerfile.dev`, `.github/workflows/audit.yml`
+
+**Finding.** On 2026-10-14 RustSec published four advisories against `rustls` 0.23.45, all
+patched in 0.23.46 (released by `ctz` at 09:54Z that day):
+- **RUSTSEC-2026-0346** (CVSS 4.0): the derived `Debug` of `Tls12ClientSessionValue` /
+  `Tls13ClientSessionValue` printed the TLS 1.2 master secret or the TLS 1.3 resumption PSK. It
+  leaks only through a custom `ClientSessionStore` that formats those values.
+- **-0347** (2.3): a client's application data buffered before an ECH rejection went to the outer,
+  `public_name` server.
+- **-0348** (3.7): with the non-default `brotli` feature, a five-byte header could make certificate
+  decompression allocate 1 GiB before authentication.
+- **-0349** (3.7): an unauthenticated ServerHello pinned later ClientHellos for that name to a
+  classical X25519 share, a silent downgrade from X25519MLKEM768.
+
+`cargo audit` on `main` exits 1. The week's three Dependabot PRs (#15 docker, #16 actions,
+#17 cargo) had all run `audit.yml` green at 07:03Z, before the fix and the advisories existed, so
+nothing on the PRs showed it; the first red would have been the scheduled run of 2026-10-19.
+**Not reachable**, for SEC-016's reason: `rustls` arrives only through sqlx's
+`tls-rustls-aws-lc-rs`, and neither the production nor the dev Postgres offers TLS, so no
+handshake ever runs. Independently of that, this graph enables only the `aws-lc-rs`, `std` and
+`tls12` features (no `brotli`), and the app configures no ECH and no custom session store. Hence
+Low, fixed by upgrading rather than by an ignore. The three PRs were reviewed as SEC-003 requires
+and applied as one pass on a release branch, the SEC-014 … SEC-016 precedent.
+
+**Change.**
+- **Advisories:** `cargo update -p rustls` → 0.23.45 → **0.23.46**. One package: its
+  `aws-lc-rs` and `rustls-webpki` requirements are already met by the lock.
+- **Cargo group (#17):** `tokio` 1.53.1 → 1.53.3, `serde_json` 1.0.151 → 1.0.154, `toml` 1.1.6 →
+  1.1.8 (with `serde_spanned` 1.1.2, `toml_datetime` 1.1.2, `toml_parser` 1.1.5, `toml_writer`
+  1.1.3), `uuid` 1.26.1 → 1.28.0. **The PR's description did not match its lockfile:** it
+  announces tokio 1.53.2 and serde_json 1.0.152, while its `Cargo.lock` carries 1.53.3
+  (2026-10-13) and 1.0.154 (2026-10-11). Dependabot chose its targets, then let `cargo update` lock
+  the newest. What was reviewed is what is locked. The changes that touch this code:
+  - `toml` 1.1.7 rejects duplicate keys when deserializing into a `Table`, and 1.1.8 always
+    encodes keys when serializing. The only caller is `toml::from_str` into a typed struct in
+    `bin/ingest.rs`.
+  - `uuid` 1.27 makes `parse_str` accept a case-insensitive `urn:uuid:` prefix, and `find_by_id`
+    (`persistence/blog_postgres.rs`) parses a client-supplied id with it. A URN spelling of an
+    existing id now finds that post instead of "not found": the same row the bare id returns,
+    still bound as a parameter. 1.28 only adds optional serde adapters.
+  - `tokio` 1.53.2 and 1.53.3 move waker drops outside locks and deprecate `AsyncFd::new` and its
+    siblings, which this code does not call.
+  - `serde_json`'s three patches fix number edge cases (`-0` under `arbitrary_precision`,
+    comparison with `f32::INFINITY`), the reported position of invalid UTF-8, and
+    `preserve_order` under `no_std`.
+
+  Side effect: the group update alone re-points `errno` and `winapi-util` from `windows-sys`
+  0.61.2 to 0.52.0, the reverse of SEC-015's flip. Local cargo 1.99 does the same, so it is not a
+  Dependabot artefact. The `rustls` update then re-pointed both back, so the final lock moves
+  exactly the nine packages above and nothing else (371 → 371 crates). Both edges are
+  Windows-only and absent from the linux, wasm32 and macOS graphs.
+- **Docker base (#15):** `rust:1.99-bookworm` `59037199…` → **`114c7a44…`** in both Dockerfiles,
+  kept identical as SEC-006 requires. That index was built on 2026-10-06 from
+  `rust-lang/docker-rust` `079baa4c` (Rust 1.99.0) over a newer `buildpack-deps:bookworm`. The tag
+  moved again hours before this review (`e12566d5…`, built 2026-10-15 for Rust 1.99.1, docker-rust
+  `1b9592f0`). The PR's digest is taken as is, as SEC-016 did with its action pin: a reviewed pin,
+  not the newest one. Dependabot proposes the 1.99.1 rebuild next. The distroless `cc-debian12`
+  digest was re-checked against its live tag and is unchanged.
+- **Actions (#16):** `taiki-e/install-action` v2.87.21 → **v2.87.26** in both `audit.yml` jobs,
+  SHA and `# vX.Y.Z` comment together. Released 2026-10-06, nine days old: the SEC-019 cooldown
+  worked, and the pin needed no retargeting by hand.
+
+**Verification.**
+- Action pin: tag `v2.87.26` resolves through the GitHub API to commit `f7e5d7c9…` (a commit
+  object), `Release 2.87.26` by Taiki Endo, an ancestor of the action's `main` (32 ahead, 0
+  behind). It is unsigned, like every release commit of this action. The 62 commits from the old
+  pin, by `taiki-e` and `dependabot[bot]`, touch only `CHANGELOG.md`, `manifests/*.json`, the
+  action's own CI workflows and its manifest generator (`tools/codegen`). No runtime file
+  (`action.yml`, `main.sh`) changed, and neither did `cargo-audit.json`. `uv.json` did, so it was
+  diffed between the two pins: the `0.12.19` entry the uv job installs is identical, and only
+  `0.12.20` … `0.12.23`, `0.12` and `latest` moved. Both jobs therefore install the same binaries
+  as before. PR #16's own audit run (38525817612) was green with the new pin.
+- Image digest: `114c7a44…` resolves in Docker Hub to an OCI index with a `linux/amd64` manifest,
+  annotated with docker-rust revision `079baa4c…` and base `buildpack-deps:bookworm`.
+- Cargo: the lock after the local group update was byte-identical to PR #17's. All **9/9**
+  bumped checksums in the final lock match the crates.io sparse index, and none of the versions
+  is yanked. Each was published by that crate's own maintainer: `ctz` (rustls, 10-14),
+  `Darksonn` (tokio, 10-13), `dtolnay` (serde_json, 10-11), `epage` (the toml crates, 10-08 and
+  10-09), `KodrAus` (uuid, 10-10). `cargo audit --deny yanked --deny unsound` exits **0**, down
+  from 1, with only the two known `unmaintained` warnings. `cargo check --locked` passes for `ssr`
+  and for `hydrate` on `wasm32-unknown-unknown`. **15/15** unit tests pass (12 backend, 3
+  bc-blog), and `cargo fmt --check` is clean. `make blog/build` links, and `make blog/ingest`
+  against the dev database ran the migrations and parsed the real `content/posts/*.md`
+  frontmatter with `toml` 1.1.8 (1 upserted).
+- `cargo leptos end-to-end` under the dev secrets built the app, served it against the dev
+  database and ran the Chromium suite: **19 passed, 2 skipped**, the SEC-017/018 result. The skips
+  are the post-page tests, by design, because the dev database holds no published post.
+- **Not run: the Docker image build.** The daemon was up, but pulling the new `114c7a44…` base
+  stalled at 22 MB of its ~480 MB of layers and was abandoned. The build itself is unchanged apart
+  from the `FROM` digest, and the release's publish run is the first to build on it; check that
+  run before trusting the rollout.
+- Python side of the Monday pass: no `uv` Dependabot PR this week. `uv audit --frozen` reports
+  nothing in 19 packages, and none of the 19 locked releases is yanked on PyPI (JSON API, the
+  SEC-020 follow-up). The scheduled `audit.yml` run of 2026-10-12 (38262910171) was green.
+
+**Follow-ups.**
+- **The base image does not supply the compiler.** `rust-toolchain.toml` names the channel
+  `1.99`, and the image's preinstalled toolchain is named `1.99.0`. So during
+  `cargo leptos build`, rustup in the builder syncs the `1.99` channel and downloads a toolchain of
+  its own (v0.5.6, run 37229869568: "syncing channel updates for 1.99-x86_64-unknown-linux-gnu",
+  7 components). The digest pins the Debian packages, the linker, rustup and the cargo-leptos
+  install, but not the compiler: the next release compiles with whatever 1.99.x is current, which
+  is 1.99.1 from today, although this change pins a 1.99.0 image. That follows the repository's
+  patch-floating convention (SEC-018 cites it), and rustup checks the download against the sha256s
+  in the channel manifest from `static.rust-lang.org`, the same anchor the official image's own
+  install trusts. So it is recorded here rather than opened as a finding. If the compiler should
+  be pinned as well, set an exact `channel = "1.99.1"` and move it together with the image tag.
+  1.99.1 fixes three regressions and no advisory. One of them is an x86_64 miscompilation of
+  `bool` returns across FFI.
+- When reviewing a Dependabot cargo PR, read the versions from its `Cargo.lock` diff, not from its
+  title or body (#17 above).
+
 ## Open findings
 
 **None.** SEC-013 was the last one open and closed on 2026-08-31, verified against live AWS
 rather than against Terraform state — every finding of the 2026-08-23 audit (SEC-001 … SEC-012)
-plus SEC-013 … SEC-016 and SEC-018 … SEC-020 is now Fixed above, and SEC-017 is Accepted.
+plus SEC-013 … SEC-016 and SEC-018 … SEC-021 is now Fixed above, and SEC-017 is Accepted.
 
 Two things are *tracked but not findings against this repository*, both recorded in full on their
 entries: `typst-resume`'s OIDC trust lists only the plain subject spelling and will break opaquely
