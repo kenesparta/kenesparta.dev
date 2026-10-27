@@ -989,11 +989,138 @@ and applied as one pass on a release branch, the SEC-014 … SEC-016 precedent.
 - When reviewing a Dependabot cargo PR, read the versions from its `Cargo.lock` diff, not from its
   title or body (#17 above).
 
+### SEC-022 — The emSign distrust, a `ctutils` timing fix and fifteen `zstd` advisories turned both audit jobs red
+
+**Severity:** Low · **Status:** Fixed 2026-10-26 · **Where:** `Cargo.toml`, `Cargo.lock`,
+`.github/workflows/audit.yml`, `apps/backend/end2end/pyproject.toml`, `apps/backend/end2end/uv.lock`
+
+**Finding.** The scheduled `audit.yml` run of 2026-10-26 (40321211895) failed in **both** jobs:
+- `cargo-audit`: **RUSTSEC-2026-0381** (`webpki-roots` 1.0.9 still bundles `emSign ECC Root CA -
+  G3`) and **-0382** (`rustls-webpki` 0.103.15 may accept paths through the distrusted emSign
+  intermediates, whose private keys are now public), both in the advisory database since
+  2026-10-20; and **-0385** (`ctutils` 0.4.2: `Choice` mask generation could compile to a branch
+  on the secret, and `u128` comparisons branched on 32-bit targets), since 2026-10-23.
+- `uv-audit`: **GHSA-6q48-6c7w-9gw2** / PYSEC-2026-4320, the same emSign compromise in `certifi`
+  2026.7.22.
+
+At 13:45Z the same day RustSec assigned a batch of advisories against the `zstd` stack, so the
+`cargo-audit` runs of Dependabot's #21 (cargo) and #22 (uv), opened that evening, reported 7
+vulnerabilities and 10 denied warnings: the three above, plus RUSTSEC-2026-0391 (`zstd` 0.13.3),
+-0398 and -0403 (`zstd-safe` 7.2.4), -0410 (`zstd-sys` 2.0.16, a wasm allocator shim), and eight
+`unsound` against `zstd-safe` (-0395 … -0406: use-after-free, double free and out-of-bounds reads
+in `try_clone`, dictionaries, `Seekable`, `train_from_buffer`). Their fixes are semver-major
+(`zstd` 0.14.3, `zstd-safe` 8.2.0). None of the open PRs touched these crates: the red came from
+`main`, and #22's `uv-audit` was green only because it happens to remove `certifi` (below). For
+six days nothing showed the first two advisories, because nothing triggered the workflow between
+weekly runs. That is the SEC-016 lesson again, at a weekly cadence.
+
+**Not reachable**, each for its own reason, hence Low and fixed by upgrading or removing rather
+than by an ignore:
+- `rustls-webpki`, `webpki-roots`: SEC-016's reason. They arrive only through sqlx's
+  `tls-rustls-aws-lc-rs`, and neither Postgres offers TLS, so no certificate path is ever built.
+- `ctutils`: through `digest` → `hmac`/`hkdf`/`md-5`/`sha2` in `sqlx-postgres`, i.e. the password
+  exchange with Postgres over the internal `web` network. Timing it needs code already running
+  on the instance.
+- `zstd`: `tower-http`'s `compression-full` compiled in a zstd *encoder*, but production never
+  negotiates it. CloudFront forwards only gzip and br to the origin: against `kenesparta.dev`,
+  `Accept-Encoding: zstd` comes back uncompressed and a browser's `gzip, deflate, br, zstd` gets
+  `br`. No decompression feature is enabled.
+- `certifi`: test tooling only (`requests` ← `pytest-base-url` ← `pytest-playwright`). The suite
+  speaks plain HTTP to a local server, and none of it is in the image.
+
+**Change.** The three Dependabot PRs (#19 actions, #21 cargo, #22 uv) were reviewed as SEC-003
+requires and applied, with the advisory fixes, as one pass on `release/v0.5.8`, the SEC-014 …
+SEC-021 precedent:
+- **zstd, removed:** `tower-http` features `compression-full` → `compression-br`,
+  `compression-deflate`, `compression-gzip` (plus `trace`), commented at the dependency. The lock
+  loses exactly `zstd` 0.13.3, `zstd-safe` 7.2.4 and `zstd-sys` 2.0.16 (371 → 368 crates), and
+  with them the only C code compiled for compression. Rejected: keeping zstd through
+  `cargo update -p async-compression -p compression-codecs`, which reaches `zstd-safe` 8.2.0 but
+  moves 10 packages, among them `brotli` 8 → 9 and `brotli-decompressor` 5 → 6, both majors, for a
+  codec no visitor receives.
+- **Advisories:** `cargo update --precise`, three packages and nothing else moved:
+  `rustls-webpki` 0.103.15 → **0.103.16**; `webpki-roots` 1.0.9 → **1.0.11**, one past the minimal
+  fix: 1.0.10 removed `emSign ECC Root CA - G3`, and 1.0.11 also removes `emSign Root CA - C1` and
+  `emSign ECC Root CA - C3`, the rest of the same CCADB removal; `ctutils` 0.4.2 → **0.4.4**, the
+  security-only release (0.4.5 and 0.4.6 followed within three days, adding a `primitives` API and
+  Thumb-1 hardening).
+- **Cargo group (#21):** `tokio` 1.53.3 → 1.54.1, `pulldown-cmark` 0.13.4 → 0.13.5, `uuid` 1.28.0
+  → 1.29.0, read from the PR's `Cargo.lock` (SEC-021's follow-up); this time the title agrees.
+  - `tokio` 1.54.0 was **yanked**; 1.54.1 reverts its "remove the runtime handle from timers". The
+    minor's behaviour changes (panics on zero-capacity `BufReader`/`BufStream`/pipes, zero rejected
+    by `set_max_buf_size`, `copy_bidirectional_with_sizes` and `max_io_events_per_tick`, accepted
+    sockets starting readable) touch nothing in `apps/` or `crates/`.
+  - `pulldown-cmark` 0.13.5 backports fixes for hostile input (pulldown-cmark#1179: exponential
+    growth with wikilinks, panics, two quadratic parses) and #1021, a parse change for an
+    all-spaces line between a reference definition and a paragraph. The ingest renders only the
+    author's own posts, without wikilinks, so this is hygiene.
+  - `uuid` 1.29 only adds versioned constructors to `NonNilUuid`.
+  - As in SEC-021, the group update re-points `errno` and `winapi-util` from `windows-sys` 0.61.2
+    to 0.52.0, and this time nothing flips them back. Both edges are Windows-only, and 0.52.0 was
+    already locked.
+- **Actions (#19):** `taiki-e/install-action` v2.87.26 → **v2.87.28** in both `audit.yml` jobs,
+  SHA and `# vX.Y.Z` comment together.
+- **e2e (#22):** `playwright` 1.63.0 → 1.64.0, `pytest-playwright` 0.9.0 → 0.10.0. 0.10.0 makes
+  `pytest-base-url` an optional extra and provides `--base-url`, the `base_url` ini option and the
+  `base_url` fixture itself. The lock therefore drops `pytest-base-url`, `requests`, `urllib3`,
+  `idna`, `charset-normalizer` and **`certifi`** (19 → 13 packages), which clears the uv advisory
+  by removal. The suite does not use `--verify-base-url`, the one feature that now needs the extra.
+
+The local updates reproduced each PR exactly: the #21 lock delta, #19's `audit.yml` and #22's
+`pyproject.toml` and `uv.lock` (re-locked under the 7-day `exclude-newer`) are byte-identical.
+
+**Verification.**
+- `cargo audit --deny yanked --deny unsound` exits **0**, with only the two known `unmaintained`
+  warnings. With the same database (1,378 advisories) the base lock gives 7 vulnerabilities, 10
+  denied warnings, exit 1.
+- All six bumped checksums match the crates.io sparse index, and none of the versions is yanked.
+  Publishers: `ctz` (rustls-webpki 10-20, webpki-roots 10-23), `Darksonn` (tokio 10-21),
+  `Martin1887` (pulldown-cmark 10-21), `KodrAus` (uuid 10-23); `ctutils` 0.4.4 (10-23) came through
+  crates.io trusted publishing from `RustCrypto/utils` (Actions run 39881770254).
+- `cargo fmt --check` is clean; `cargo check --locked` passes for `ssr` and for `hydrate` on
+  `wasm32-unknown-unknown`; **15/15** unit tests pass; `make blog/build` links, and
+  `make blog/ingest` against the dev database ran the migrations and upserted the one post.
+- `pulldown-cmark`: the post in `content/posts/` rendered with the ingest's options
+  (tables, footnotes, strikethrough) is byte-identical under 0.13.4 and 0.13.5 (9,647 bytes).
+- Compression: the dev build on a local port answers `zstd` uncompressed, a browser's mix with
+  `br`, and `gzip` and `deflate` with those. That is what production already did behind CloudFront.
+- e2e: with Playwright 1.64's Chromium headless shell installed,
+  `uv run --locked pytest --base-url http://127.0.0.1:3100` against the dev build and database
+  gave **19 passed, 2 skipped**, the SEC-021 result. The skips are the post-page tests, by design,
+  because the dev database holds only a draft. The run also exercises the `--base-url` that
+  pytest-playwright now provides. A first `cargo leptos end-to-end` failed 16 tests for an
+  unrelated reason: another local project's container holds `127.0.0.1:3000`, so
+  `localhost:3000` reached that site.
+- Python: `uv audit --frozen` (local uv 0.13.5) reports nothing in 13 packages. Every file hash in
+  `uv.lock` matches PyPI's JSON API, none of the 13 releases is yanked (SEC-020 follow-up), and
+  `playwright` 1.64.0 (uploaded 10-13) and `pytest-playwright` 0.10.0 (10-08) are past the
+  week-old window.
+- Action pin: tag `v2.87.28` resolves through the GitHub API to commit `1168f681…` (a commit
+  object), `Release 2.87.28` by Taiki Endo, 2026-10-12, an ancestor of the action's `main`. It is
+  unsigned, like every release commit of this action. The 32 commits from the old pin, by
+  `taiki-e` and `dependabot[bot]`, touch `CHANGELOG.md`, `manifests/*.json`, the action's
+  manifest-refresh schedule and its codegen's `minisign-verify` requirement. No runtime file
+  changed, nor did `cargo-audit.json`. In `uv.json` only `0.12.24`, `0.13.0`, `0.12`, `0.13` and
+  `latest` moved; the `0.12.19` entry the uv job installs is identical.
+- Docker: `docker build .` succeeded locally, the first local image build since SEC-014. It pulled
+  the pinned `114c7a44…` base, built the wasm (1m 21s) and the native release (1m 42s) under
+  `--locked`, and compiled the new `ctutils`, `rustls-webpki`, `webpki-roots`, `tokio` and `uuid`
+  and no `zstd` crate. The runtime image runs as `nonroot`. It was an `arm64` build on Apple
+  Silicon; the publish run builds `amd64`. Inside the builder, rustup synced the `1.99` channel to
+  1.99.1, as SEC-021's follow-up predicted.
+
+**Follow-ups.**
+- Re-enable `compression-zstd` only if CloudFront starts forwarding zstd (a personal-infra cache
+  policy change), and only with `zstd-safe` ≥ 8.2.0 in the lock, which needs `compression-codecs`
+  ≥ 0.4.40 and currently brings the `brotli` majors above.
+- Advisories reach `main` up to a week before the scheduled run reports them; this time it was six
+  days. A daily `schedule` would cost one short job a day. That decision is open, not taken here.
+
 ## Open findings
 
 **None.** SEC-013 was the last one open and closed on 2026-08-31, verified against live AWS
 rather than against Terraform state — every finding of the 2026-08-23 audit (SEC-001 … SEC-012)
-plus SEC-013 … SEC-016 and SEC-018 … SEC-021 is now Fixed above, and SEC-017 is Accepted.
+plus SEC-013 … SEC-016 and SEC-018 … SEC-022 is now Fixed above, and SEC-017 is Accepted.
 
 Two things are *tracked but not findings against this repository*, both recorded in full on their
 entries: `typst-resume`'s OIDC trust lists only the plain subject spelling and will break opaquely
