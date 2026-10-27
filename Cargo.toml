@@ -27,7 +27,15 @@ leptos_axum = "0.8.0"
 # Server-only: runtime, HTTP and the Postgres client.
 axum = { version = "0.8.0", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.7.0", features = ["compression-full", "trace"] }
+# No `compression-zstd` (SECURITY.md SEC-022): CloudFront forwards only gzip
+# and br in Accept-Encoding, so a zstd codec here never served a response and
+# only carried zstd-sys's C code and its advisories.
+tower-http = { version = "0.7.0", features = [
+    "compression-br",
+    "compression-deflate",
+    "compression-gzip",
+    "trace",
+] }
 
 # Server-only: structured JSON logs on stdout, filtered by RUST_LOG.
 tracing = "0.1"
