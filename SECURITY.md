@@ -75,8 +75,8 @@ Settings → Secrets and variables → Actions
 ECR/Terraform pipeline: `AWS_ROLE_ARN` (OIDC role, present since `19cfd66`,
 2025-10-28) and `SOPS_AGE_KEY` (referenced from `e0ef34d`, 2026-07-24). Neither
 has been referenced by any workflow since `c9b205c` (2026-07-27, "publish images
-to GHCR instead of ECR"); the current pipeline authenticates with the repo's
-own `GITHUB_TOKEN` only. `SOPS_AGE_KEY` is the **age private key** — it
+to GHCR instead of ECR"); the pipeline of the time authenticated with the
+repo's own `GITHUB_TOKEN` only. `SOPS_AGE_KEY` is the **age private key** — it
 decrypts `secrets/prod.enc.env`, i.e. the production `DATABASE_URL`. Stored but
 unused, it is pure attack surface: anyone able to push a workflow file (a stolen
 token with `workflow` scope, a compromised action in a workflow that references
@@ -103,6 +103,12 @@ belongs only in `~/.config/sops/age/keys.txt`.
   `.sops.yaml`, `make secrets-rotate`). The key was stored in GitHub for about a
   month and used by CI for three days, all under the owner's control, so this is
   belt-and-braces rather than a response to a known exposure.
+- *2026-10-28:* images publish to private ECR again (personal-infra spec
+  AD-15), so the repository has one Actions secret, `AWS_ECR_PUSH_ROLE_ARN` —
+  the ARN of the OIDC push role (see SEC-013's note), an identifier rather than
+  a credential. "No Actions secrets" above was true until then. `SOPS_AGE_KEY`
+  and `AWS_ROLE_ARN` stay deleted and must not be re-created; the Verification
+  grep still matches nothing.
 
 ### SEC-007 — Yanked and unsound crates shipped because `cargo audit` only warned
 
@@ -372,7 +378,7 @@ never destroyed. Its state was migrated verbatim into personal-infra (AD-9, addr
 and the role deliberately survives Phase 7 because `typst-resume` publishes the CV through it —
 its only remaining permission is write/delete on the `cdn.kenesparta.dev` S3 bucket. But its
 trust policy still accepted `repo:kenesparta/kenesparta.dev:ref:refs/heads/main` and
-`:ref:refs/tags/*`. This repository's CI has needed no AWS access since the GHCR migration, so
+`:ref:refs/tags/*`. This repository's CI needed no AWS access then (see the 2026-10-28 note), so
 the entries were pure leftover: any workflow added here — or a compromised action running inside
 one (the SEC-003 scenario) — could assume the role over OIDC and overwrite or delete the
 published CV and the blog's static assets. The GitHub OIDC *provider* remains in the account,
@@ -410,6 +416,16 @@ behind it landed as `58c0c95` in personal-infra, so state and reality agree.
   publish starts failing with an opaque `Not authorized to perform
   sts:AssumeRoleWithWebIdentity`. Adding the id-form spellings for `typst-resume` mirrors the
   scoping commit `8f19d8e` in personal-infra.
+- *2026-10-28 (personal-infra spec AD-15):* this repository's CI has AWS access again, through a
+  role of its own. `publish-image.yml` assumes `github-actions-ecr-push-kenespartadev` over OIDC,
+  trusted only from `refs/tags/v*` of this repository and allowed to push to the `kenespartadev`
+  ECR repository and nothing else; its ARN is the repository secret `AWS_ECR_PUSH_ROLE_ARN`. The
+  finding stays fixed: this repository still has **no** trust on `github-actions-ecr-ecs-deploy`,
+  which remains `typst-resume`-only. The Verification sweep's "exactly two" and "no role names
+  `kenesparta.dev`" are as of 2026-08-31; a re-run now should also find the per-image push roles,
+  with this repository named on its own one only. The subject-spelling hazard above applies to
+  the new role too — a plain-spelling-only trust would fail every release opaquely if GitHub
+  switches this repository's claims to the immutable form.
 
 ### SEC-014 — A yanked transitive turned the weekly audit red; pins drifted for a week
 
@@ -1139,5 +1155,5 @@ checks can be repeated, and so the next audit knows what was already covered.
 - **pnpm** (`apps/backend/end2end`) — 7 packages, 7/7 `sha512` integrity values match `registry.npmjs.org`; none on the 2025 npm compromise lists (`chalk`/`debug`/Shai-Hulud, `nx`, `eslint-config-prettier`).
 - **Git history** — 93 commits, a single author, every commit signed and reported `verified: true, reason: valid` by GitHub (31 show `E` locally only because the older key and GitHub's web-flow key are not in the local keyring). Local `main` == `origin/main` (the Codeberg mirror was 3 commits behind).
 - **GitHub** — public repo, 1 collaborator (owner), 0 webhooks, 0 deploy keys, default workflow token permission `read`; all 35 workflow runs in history were triggered by the owner.
-- **GHCR** — `:latest` digest equals `:v0.4.3` (`sha256:f09e74fb21855f38c3b49dfd72e4ff29ccab0f49aaf402b782538b3fa5091aaa`), image created 6 minutes after that tag's workflow run, `USER nonroot`, buildx provenance attestation attached, labels/env/cmd as expected. Three SHA-named tags (`0f8fa66…`, `b904879…`, `3a16452…`) are leftovers of the July pipeline iterations and map to real commits.
+- **GHCR** — `:latest` digest equals `:v0.4.3` (`sha256:f09e74fb21855f38c3b49dfd72e4ff29ccab0f49aaf402b782538b3fa5091aaa`), image created 6 minutes after that tag's workflow run, `USER nonroot`, buildx provenance attestation attached, labels/env/cmd as expected. Three SHA-named tags (`0f8fa66…`, `b904879…`, `3a16452…`) are leftovers of the July pipeline iterations and map to real commits. *(2026-10-28: images now publish to private ECR — personal-infra spec AD-15 — and GHCR receives no new pushes, so a repeat of this check runs against the ECR repository `kenespartadev`.)*
 - **Application code** — all SQL parameterised; the trailing-slash open-redirect fix confirmed live (`//evil.com/` → `Location: /evil.com`); JSON-LD `<` escaping correct; drafts gated by slug and by the `.md` endpoint; `unsafe_code = "forbid"` on every crate; `content/posts` contains no raw HTML/script.

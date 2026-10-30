@@ -12,7 +12,7 @@ Personal portfolio website built with Leptos (Rust full-stack web framework), de
 - **Database**: PostgreSQL (Lightsail managed database) via SQLx — blog posts authored as Markdown in `content/posts/`
 - **Secrets**: [sops](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age) — encrypted dotenv files committed under `secrets/`
 - **Infrastructure**: Terraform (AWS Lightsail Containers, CloudFront, Route53, ACM)
-- **CI/CD**: GitHub Actions — publishes the image to a private ECR repo, then rolls it out on Lightsail with `terraform apply -target` (AWS OIDC)
+- **CI/CD**: GitHub Actions — publishes the image to a private ECR repo through an AWS OIDC role; the Lightsail host pulls `latest` on a timer (personal-infra)
 
 ## Architecture
 
@@ -276,22 +276,34 @@ make dev/destroy # Destroy resources
 ## CI/CD Pipeline
 
 GitHub Actions (`publish-image.yml`) on version tags (`vX.Y.Z`): a single
-`build-push` job builds the Docker image and pushes it to GHCR as
-`ghcr.io/kenesparta/kenespartadev:vX.Y.Z` and `:latest`. That is the whole
-pipeline — the host's systemd timer (personal-infra) polls GHCR every 10 minutes
-and recreates the container when `latest` moves. `audit.yml` runs `cargo audit`
-on dependency changes and weekly, failing on vulnerabilities and on yanked or
-unsound crates. Actions are pinned to commit SHAs (the repository rejects tag
-references) and Dependabot keeps the pins and lockfiles fresh — see
-`SECURITY.md`.
+`build-push` job assumes an AWS role over OIDC, builds the Docker image and
+pushes it to the private ECR repository `kenespartadev` as `:vX.Y.Z` and
+`:latest`. That is the whole pipeline — the host's systemd timer (personal-infra)
+polls ECR every 10 minutes and recreates the container when `latest` moves.
+`audit.yml` runs `cargo audit` on dependency changes and weekly, failing on
+vulnerabilities and on yanked or unsound crates. Actions are pinned to commit
+SHAs (the repository rejects tag references) and Dependabot keeps the pins and
+lockfiles fresh — see `SECURITY.md`.
 
 ### Required Secrets
 
-None. The workflow authenticates to GHCR with the repository's own
-`GITHUB_TOKEN` (`packages: write`). The `AWS_ROLE_ARN` and `SOPS_AGE_KEY`
-secrets of the former ECR/Terraform pipeline are no longer used and must not be
-re-created — the age private key in particular belongs only in
-`~/.config/sops/age/keys.txt` (see `SECURITY.md`, SEC-002).
+One: `AWS_ECR_PUSH_ROLE_ARN`, the ARN of the IAM role
+`github-actions-ecr-push-kenespartadev`. It is not a credential — no AWS key
+exists for this pipeline; the workflow trades its GitHub OIDC token for
+short-lived credentials on that role. The role is personal-infra's (spec AD-15):
+its trust accepts only this repository's `v*` tags, and it can push to the
+`kenespartadev` ECR repository and nothing else. The registry host is read from
+the ECR login step at run time, never stored here. One-time setup:
+
+```bash
+cd ../personal-infra && make output NAME=ecr_push_role_arns   # the kenespartadev entry
+gh secret set AWS_ECR_PUSH_ROLE_ARN -R kenesparta/kenesparta.dev   # paste the ARN
+```
+
+The `AWS_ROLE_ARN` and `SOPS_AGE_KEY` secrets of the former ECR/Terraform
+pipeline are no longer used and must not be re-created — the age private key in
+particular belongs only in `~/.config/sops/age/keys.txt` (see `SECURITY.md`,
+SEC-002).
 
 ## Routes
 

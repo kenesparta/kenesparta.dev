@@ -6,8 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a personal portfolio website built with Leptos (Rust full-stack web framework) using Axum as the backend
 server. It runs as a Docker container on a shared AWS Lightsail **instance** (Ubuntu 24.04) behind CloudFront and
-Caddy, with the image published to **GHCR**. Deployment is pull-based: a systemd timer on the host polls GHCR and
-recreates the container when `latest` moves — CI never touches AWS. Blog posts are Markdown files in `content/posts/`
+Caddy, with the image published to a private **ECR** repository (`kenespartadev`). Deployment is pull-based: a
+systemd timer on the host polls ECR and recreates the container when `latest` moves — CI's only AWS access is an OIDC
+role that can push to that one repository, from `v*` tags only. Blog posts are Markdown files in `content/posts/`
 ingested into a **self-hosted PostgreSQL 18 container** on the same host.
 
 **All infrastructure lives in the sibling repo `../personal-infra`** — Terraform for the AWS edge (Route 53, ACM,
@@ -15,7 +16,7 @@ CloudFront, the instance, the backup bucket) and Ansible for everything on the h
 timers, backups, hardening). Its `spec/` directory is the authoritative record of every infra decision; read it before
 proposing infra changes, and make them there, not here. This repo builds and ships the application image; nothing
 more. The old `tf/` directory (Lightsail Container Service, ECR, per-repo CloudFront) was deleted in the migration —
-do not recreate it.
+do not recreate it. Today's ECR repository and its push role are personal-infra's (spec AD-15), not a revival of it.
 
 **Security ledger:** `SECURITY.md` records every security-relevant change as a `SEC-NNN` entry (finding, change,
 verification, follow-ups) plus the open findings of the last audit. Add an entry whenever you touch secrets handling,
@@ -54,9 +55,9 @@ dependency for an advisory — and read it before changing any of those.
   local tooling (dev server, ingest CLI) — the production container's env comes from personal-infra's Ansible Vault,
   not from here
 - **Containerization**: Docker (multi-stage build → distroless runtime)
-- **CI/CD**: GitHub Actions (`publish-image.yml`) — on `vX.Y.Z` tags, builds the image and pushes
-  `ghcr.io/kenesparta/kenespartadev:vX.Y.Z` + `:latest` using only the repo's `GITHUB_TOKEN`. That is the whole
-  pipeline; the host's timer does the rollout
+- **CI/CD**: GitHub Actions (`publish-image.yml`) — on `vX.Y.Z` tags, assumes the OIDC role
+  `github-actions-ecr-push-kenespartadev`, builds the image and pushes `<registry>/kenespartadev:vX.Y.Z` + `:latest`
+  to private ECR. That is the whole pipeline; the host's timer does the rollout
 
 ## Repository Structure
 
@@ -96,7 +97,7 @@ dependency for an advisory — and read it before changing any of those.
 │       ├── Cargo.toml        # Leptos config (output-name, site-root, bin-target, …)
 │       └── ...
 ├── Dockerfile             # Multi-stage build (builds from apps/backend, distroless runtime)
-├── .github/workflows/     # publish-image.yml (GHCR) + audit.yml
+├── .github/workflows/     # publish-image.yml (ECR) + audit.yml
 └── Makefile               # Build shortcuts (incl. secrets* and blog/* targets)
 ```
 
@@ -369,11 +370,16 @@ Release tags are annotated and GPG-signed (`tag.gpgSign` is set in this repo's g
 config — the `-m` is required, a bare `git tag vX.Y.Z` opens the editor), and a
 GitHub tag ruleset (`protect-release-tags`) restricts creating/moving/deleting
 `v*` tags to repository admins. Pushing a `v*` tag IS the deploy, so those two
-controls are the release gate.
+controls are the release gate — and, because the push role trusts only
+`refs/tags/v*`, the gate on CI's AWS access too.
 
-builds the image and pushes `ghcr.io/kenesparta/kenespartadev:vX.Y.Z` + `:latest` to GHCR, authenticated with the
-repo's own `GITHUB_TOKEN` — no AWS credentials, no OIDC role, no Terraform. The host's deploy timer picks up the
-moved `latest` within ~10 minutes; there is nothing to watch in AWS. `audit.yml` runs dependency audits.
+The workflow builds the image and pushes `<registry>/kenespartadev:vX.Y.Z` + `:latest` to the private ECR repository. It
+authenticates by assuming `github-actions-ecr-push-kenespartadev` over GitHub OIDC — trusted only from this repo's
+`refs/tags/v*`, allowed to push to that one repository and nothing else — so there is no stored AWS key; the only
+repository secret is the role's ARN, `AWS_ECR_PUSH_ROLE_ARN` (set once, from `make output NAME=ecr_push_role_arns` in
+personal-infra). The registry host is `amazon-ecr-login`'s `registry` output, never a literal in this repo. No
+Terraform runs here. The host's deploy timer pulls the moved `latest` from ECR within ~10 minutes, with its own
+pull-only key (personal-infra spec AD-15, §5.18). `audit.yml` runs dependency audits.
 
 **No build cache, deliberately.** The workflow carried `cache-from`/`cache-to: type=gha` until it was measured on
 the v0.4.1 run: ~205s per build (40% of an 8m29s run, 87.5s of it just "preparing build cache for export") spent
@@ -392,14 +398,14 @@ for `wasm32-unknown-unknown` / `wasm-release`.
 **Where the time goes** (v0.4.1, 8m29s total, before the cache removal):
 - `cargo leptos build --release` — 286s: 212s the native SSR `release` build, 73s the wasm hydrate artifact
 - exporting to GitHub Actions Cache — 205s (now removed)
-- `rustup target add wasm32`, the cargo-leptos install and the GHCR push — ~13s combined
+- `rustup target add wasm32`, the cargo-leptos install and the registry push (GHCR, at the time) — ~13s combined
 
 The `debug = "line-tables-only"` win under *Compile Times* does not apply to CI, which builds `--release` with debug
 info already off. Of those three optimizations only `-Zthreads` would bite into the 212s native build, at the cost
 of putting nightly in the release image.
 
-**Cost:** the $12/mo Lightsail instance is shared across all personal-infra projects; CloudFront, S3 and the backup
-bucket are pay-per-use. No ECR, no managed database.
+**Cost:** the $12/mo Lightsail instance is shared across all personal-infra projects; CloudFront, S3, the backup
+bucket and ECR storage (the lifecycle keeps `latest` plus the newest 30 images) are pay-per-use. No managed database.
 
 ## Cargo.toml Configuration
 
