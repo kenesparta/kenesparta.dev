@@ -1132,11 +1132,80 @@ The local updates reproduced each PR exactly: the #21 lock delta, #19's `audit.y
 - Advisories reach `main` up to a week before the scheduled run reports them; this time it was six
   days. A daily `schedule` would cost one short job a day. That decision is open, not taken here.
 
+### SEC-023 — A `pulldown-cmark` wikilink advisory turned the audit red on `main` and on two of the week's PRs
+
+**Severity:** Low · **Status:** Fixed 2026-11-04 · **Where:** `Cargo.lock`,
+`.github/workflows/audit.yml`, `apps/backend/end2end/pyproject.toml`, `apps/backend/end2end/uv.lock`
+
+**Finding.** The scheduled `audit.yml` run of 2026-11-02 (41465124752) failed `cargo-audit` on
+**RUSTSEC-2026-0433**: `pulldown-cmark` 0.13.5, quadratic parsing of nested image wikilinks with
+`Options::ENABLE_WIKILINKS` (CVSS 7.5, denial of service, patched in 0.13.6). Once a wikilink
+closed, `disable_all_links` left the enclosing `![[` openers on the wikilink stack, so
+`![[![[![[…]]]]]]` made each of them rescan everything inside it. The advisory is dated 2026-10-28
+(the upstream PR), but it entered the advisory database at 11:07Z on 2026-11-02 (`857a4a90`), and
+the scheduled run caught it 3.5 hours later. That evening Dependabot opened #24 (actions), #25
+(cargo) and #26 (uv). #25 is the fix and ran green. #24 and #26 ran red, on the same advisory
+inherited from `main`, as in SEC-022.
+
+**Not reachable**, hence Low:
+- `pulldown-cmark` is compiled only for the `ingest` CLI (feature `ingest`).
+  `cargo tree -p backend --features ssr -i pulldown-cmark` matches no package, so it is not in the
+  server binary or the production image.
+- The ingest's options are tables, footnotes and strikethrough. The wikilink stack is only pushed
+  under `ENABLE_WIKILINKS` (`src/parse.rs` 611 and 630 in 0.13.6).
+- The input is the author's own posts in `content/posts/`.
+
+**Change.** The three PRs were reviewed as SEC-003 requires and applied as one pass on
+`release/v0.5.9`, following the SEC-014 … SEC-022 precedent:
+- **#25:** `pulldown-cmark` 0.13.5 → **0.13.6** (`cargo update -p pulldown-cmark --precise`, only
+  that package moves). The crate diff is the fix itself: four lines in `src/parse.rs` that clear
+  `wikilink_stack` when a wikilink closes, plus its tests and the version bump. `build.rs` is
+  unchanged. Published 2026-10-30, five days old at review. That is fine here: the week-old rule
+  covers actions and the uv lock, not crates (SEC-019), and this release is the advisory fix.
+- **#24:** `taiki-e/install-action` v2.87.28 → **v2.87.32** in both `audit.yml` jobs, SHA and
+  `# vX.Y.Z` comment together.
+- **#26:** `playwright` 1.64.0 → **1.64.1**, pin and lock together.
+
+The local updates reproduce each PR byte for byte: #25's lock delta, #24's `audit.yml`, and #26's
+`pyproject.toml` and `uv.lock`, the lock re-locked under the 7-day `exclude-newer` with local uv
+0.13.7.
+
+**Verification.**
+- `cargo audit --deny yanked --deny unsound` exits **0**, with only the two known `unmaintained`
+  warnings. With the same database (1,403 advisories), the base lock gives RUSTSEC-2026-0433 and
+  exit 1.
+- `pulldown-cmark` 0.13.6: the lock checksum `3db2be46…` matches the crates.io sparse index and the
+  downloaded `.crate`, and the version is not yanked. `Martin1887` published it, as with 0.13.5.
+  Its `.cargo_vcs_info.json` names `014b61d3…`, which is what upstream's tag `v0.13.6` resolves to.
+  That commit sits two commits after `v0.13.5`, and the compare touches only the fix, its spec and
+  tests, and the version.
+- `pulldown-cmark`: the post in `content/posts/`, rendered with the ingest's options, is
+  byte-identical under 0.13.5 and 0.13.6 (9,647 bytes).
+- `cargo fmt --check` is clean. `cargo check --locked` passes for `ssr` and for `hydrate` on
+  `wasm32-unknown-unknown`, **15/15** unit tests pass, `make blog/build` links, and
+  `make blog/ingest` against the dev database upserted the one post.
+- Action pin: tag `v2.87.32` resolves through the GitHub API to commit `5488ac5a…` (a commit
+  object), `Release 2.87.32` by Taiki Endo, 2026-10-26: nine days old, so the SEC-019 cooldown held.
+  It is an ancestor of the action's `main` and unsigned, like every release commit of this action.
+  The 85 commits since the old pin, all by `taiki-e`, touch `CHANGELOG.md`, the action's own CI
+  script `tools/ci/tool-list.sh`, and `manifests/*.json`. No runtime file changed, nor did
+  `cargo-audit.json`, and the `0.12.19` entry of `uv.json` that the uv job installs is identical.
+- Python: all 8 `playwright` 1.64.1 wheel hashes in `uv.lock` match PyPI's JSON API. The release
+  is not yanked and was uploaded 2026-10-22, past the week-old window. `uv audit --frozen` reports
+  nothing in 13 packages.
+- e2e: with Playwright 1.64.1's Chromium,
+  `uv run --locked pytest --base-url http://127.0.0.1:3100` against the dev build and database
+  gave **19 passed, 2 skipped**, the SEC-022 result. The skips are the post-page tests, by design.
+
+**Follow-ups.** None new. SEC-022's open question about a daily `schedule` gains no evidence
+from this case. The advisory reached the database on the day of the weekly run, so a daily run
+would have reported it at the same time.
+
 ## Open findings
 
 **None.** SEC-013 was the last one open and closed on 2026-08-31, verified against live AWS
 rather than against Terraform state — every finding of the 2026-08-23 audit (SEC-001 … SEC-012)
-plus SEC-013 … SEC-016 and SEC-018 … SEC-022 is now Fixed above, and SEC-017 is Accepted.
+plus SEC-013 … SEC-016 and SEC-018 … SEC-023 is now Fixed above, and SEC-017 is Accepted.
 
 Two things are *tracked but not findings against this repository*, both recorded in full on their
 entries: `typst-resume`'s OIDC trust lists only the plain subject spelling and will break opaquely
