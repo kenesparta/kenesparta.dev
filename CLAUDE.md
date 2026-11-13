@@ -63,8 +63,8 @@ dependency for an advisory — and read it before changing any of those.
 
 ```
 .
-├── Cargo.toml             # [workspace] — edition 2024, rust 1.99, shared deps
-├── rust-toolchain.toml    # pins channel 1.99 + wasm32 target
+├── Cargo.toml             # [workspace] — edition 2024, rust 1.100, shared deps
+├── rust-toolchain.toml    # pins channel 1.100 + wasm32 target
 ├── clippy.toml · rustfmt.toml
 ├── crates/
 │   ├── shared-kernel/     # Cross-cutting types: DomainError, Datetime, PostUuid
@@ -106,7 +106,7 @@ dependency for an advisory — and read it before changing any of those.
 ### Local Development
 
 **Prerequisites:**
-- Rust toolchain per `rust-toolchain.toml` (1.99 + wasm32 target)
+- Rust toolchain per `rust-toolchain.toml` (1.100 + wasm32 target)
 - cargo-leptos: `cargo install cargo-leptos --locked`
 - uv (for the e2e tests); browser once per Playwright version:
   `cd apps/backend/end2end && uv run --locked playwright install chromium`
@@ -223,7 +223,7 @@ rustflags = ["-Zthreads=8"]
 
 The video settles on 8 threads as the speed/memory balance; stacked on #1 it measures
 ~33% off both clean builds and rebuilds, and it helps CI clean builds as much as local
-ones. `-Z` flags are nightly-only while `rust-toolchain.toml` pins 1.99 stable, so this
+ones. `-Z` flags are nightly-only while `rust-toolchain.toml` pins 1.100 stable, so this
 needs `cargo +nightly` — and because cargo-leptos shells out to cargo, the override has
 to reach that child process (`RUSTUP_TOOLCHAIN=nightly cargo leptos watch`). Unlike #3
 this flag is target-agnostic, so it is safe for the wasm artifact.
@@ -327,7 +327,7 @@ The navigation bar (StickyNavBar) is conditionally rendered on all pages except 
 ### Docker Deployment
 
 Multi-stage Dockerfile (build context = workspace root):
-1. **Builder stage**: Uses `rust:1.99-bookworm`, installs cargo-leptos, `COPY . .`, builds the CSS bundle, runs
+1. **Builder stage**: Uses `rust:1.100-bookworm`, installs cargo-leptos, `COPY . .`, builds the CSS bundle, runs
    `cd apps/backend && cargo leptos build --release`
 2. **Runtime stage**: Uses distroless image, copies the `backend` binary + `kdevsite/` site assets, runs as non-root
 
