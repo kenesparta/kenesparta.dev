@@ -1201,11 +1201,165 @@ The local updates reproduce each PR byte for byte: #25's lock delta, #24's `audi
 from this case. The advisory reached the database on the day of the weekly run, so a daily run
 would have reported it at the same time.
 
+### SEC-024 — A SQLite advisory against a crate that no build compiles turned the audit red; Rust 1.100 and the week's pins
+
+**Severity:** Low · **Status:** Pending (ignored since 2026-11-12; blocked on a sqlx release that
+allows `libsqlite3-sys` 0.39) · **Where:** `.cargo/audit.toml`, `rust-toolchain.toml`,
+`Cargo.toml`, `clippy.toml`, `Dockerfile`, `Dockerfile.dev`, `Cargo.lock`,
+`.github/workflows/audit.yml`, `apps/backend/end2end/pyproject.toml`, `apps/backend/end2end/uv.lock`
+
+**Finding.** The scheduled `audit.yml` run of 2026-11-09 (42642221156) failed `cargo-audit` on
+**RUSTSEC-2026-0459** (CVE-2026-119375, GHSA-72w2-rjgg-q729): SQLite before 3.54.0 can return
+uninitialized page-cache memory when a process opens a database file together with a `-wal`
+file whose page size differs. `libsqlite3-sys` 0.6.0 … 0.38.2 bundles affected SQLite, and the
+lock holds 0.30.1. The advisory got its id in the database at 09:58Z that day (`c5ed5561`), and
+the run reported it about five hours later. That evening Dependabot opened #28 (actions), #29
+(cargo) and #30 (uv). All three ran red `cargo-audit` on the advisory inherited from `main`, as in
+SEC-022 and SEC-023, and green `uv-audit`.
+
+**No upgrade can fix it this week.** The fix is `libsqlite3-sys` ≥ 0.39.0, and `sqlx-sqlite` 0.9.0,
+the newest release, requires `>=0.30.1, <0.38.0`. Upstream raised the bound to `<0.40.0` on
+`main` on 2026-11-08 (launchbadge/sqlx#4502), but no release contains it.
+
+**Not reachable**, because the crate is compiled into nothing:
+- `cargo tree -i libsqlite3-sys --target all --all-features -e all` matches no package, nor does
+  it for `sqlx-sqlite` or `sqlx-mysql`. That covers every feature of every workspace member and
+  every target: the server, the wasm bundle, the ingest CLI and the tests. Cargo does fetch their
+  sources: the image build logs `Downloaded libsqlite3-sys v0.30.1`. But it compiles none of
+  them. There is no `Compiling` line, so no build script runs, and there is no fingerprint in
+  the local target directory.
+- It is locked only because sqlx 0.9.0's `chrono`, `uuid` and `migrate` features carry weak
+  references (`sqlx-sqlite?/chrono`, …), and Cargo writes weakly referenced optional dependencies
+  into `Cargo.lock` even when nothing enables them. This is the same reason the 2026-08-23
+  verification record found `sqlx-sqlite` in the lock and in no build graph.
+- Even if it were built, nothing here opens a SQLite file. The vulnerable bundled copy is
+  compiled only under sqlx's `sqlite` or `sqlite-bundled` feature, and the workspace enables
+  `postgres` alone.
+
+**Change.** The week's three Dependabot PRs were reviewed as SEC-003 requires and applied, with the
+advisory handling and a toolchain bump, as one pass on `release/v0.5.10`, the SEC-014 … SEC-023
+precedent:
+- **Advisory, ignored:** a new `.cargo/audit.toml` ignores `RUSTSEC-2026-0459` and nothing else.
+  The reason and the removal condition sit next to the ID. This is the path the `audit.yml`
+  comment prescribes ("put it in .cargo/audit.toml with the reason and a SEC entry"), and the
+  workflow's path filters already watch that file. The `--deny yanked --deny unsound` flags are
+  unchanged. Rejected: a `[patch]` of sqlx to its git `main`, which would swap a reviewed
+  crates.io release for an unreleased tree to fix a crate no build compiles.
+- **Rust 1.99 → 1.100** (released 2026-11-12): `rust-toolchain.toml` `channel`, the workspace
+  `rust-version` and clippy's `msrv`, plus both Dockerfiles, kept identical as SEC-006 requires:
+  `rust:1.99-bookworm@114c7a44…` → **`rust:1.100-bookworm@ade39a71…`**. `README.md` and
+  `CLAUDE.md` follow. No code change was needed (below). The image was published on release day.
+  The week-old rule does not cover the `docker` ecosystem (SEC-019), and the bump was requested.
+- **Cargo group (#29):** `toml` 1.1.8 → **1.2.1**, with `serde_spanned` 1.1.2 → 1.1.3,
+  `toml_datetime` 1.1.2 → 1.1.3 and `toml_writer` 1.1.3 → 1.2.0, read from the PR's `Cargo.lock`
+  (SEC-021's follow-up); the title agrees. The changelogs list performance work only: a
+  deserializer `size_hint` (1.2.1) and serializer buffer and allocation changes (1.2.0). The
+  ingest only deserializes (`toml::from_str` in `bin/ingest.rs`). `toml` is also compiled into
+  the server, through `leptos_config` → `config`, but `get_configuration(None)` in `main.rs`
+  reads only the environment, so it parses nothing there.
+- **Actions (#28):** `taiki-e/install-action` v2.87.32 → **v2.89.1** in both `audit.yml` jobs,
+  SHA and `# vX.Y.Z` comment together. Released 2026-11-02, ten days old at review, so the SEC-019
+  cooldown held. Unlike the last three bumps, this range changes the runtime script `main.sh`
+  (below).
+- **e2e (#30):** `pytest` 9.1.1 → **9.2.0**, pin and lock together.
+
+The local updates reproduce each PR byte for byte: #29's lock delta, #28's `audit.yml`, and #30's
+`pyproject.toml` and `uv.lock`, the lock re-locked under the 7-day `exclude-newer` with local uv
+0.13.8.
+
+**Verification.**
+- `cargo audit --deny yanked --deny unsound` exits **0**, with only the two known `unmaintained`
+  warnings. With the same database (1,490 advisories) and no `audit.toml`, it reports
+  RUSTSEC-2026-0459 and exits 1.
+- Base image: `ade39a71…` is the OCI index that `rust:1.100-bookworm` and `rust:1.100.0-bookworm`
+  both resolve to, with `linux/amd64`, `arm64`, `arm/v7`, `386` and `ppc64le` manifests. They are
+  annotated with docker-rust revision `3f4c9cd6…` and base `buildpack-deps:bookworm`, built
+  2026-11-12 20:23Z. That commit is "chore: Update Rust version to 1.100.0" by Scott Schafer,
+  signature verified by GitHub. PR #295 merged it into docker-rust's default branch `main`,
+  where it is the head. Its `stable/bookworm/Dockerfile` sets `RUST_VERSION=1.100.0`. The
+  distroless `cc-debian12` digest is unchanged.
+- Toolchain: under rustc/cargo 1.100.0, `cargo fmt --check` is clean, and `cargo check --locked`
+  passes for `ssr`, for `hydrate` on `wasm32-unknown-unknown` and for `ingest`. Clippy reports
+  exactly what 1.99 reports for the same code: `result_large_err` at `seo.rs:246`, and the
+  future-incompatibility report for `proc-macro-error2` 2.0.1 (E0365, `pub use proc_macro;`,
+  rust-lang/rust#127909), which arrives through `leptos_macro` and is not new. **15/15** unit
+  tests pass. The release notes' compatibility items were read against this code. The never-type
+  fallback was already `!` under edition 2024. Nothing here uses `box` patterns or custom
+  allocators. Cargo's new build-directory layout leaves the uplifted artifacts where they were,
+  so `make blog/build` still leaves `target/debug/ingest` where `INGEST_BIN` expects it, and
+  cargo-leptos 0.2.46 builds the server binary, the wasm, the JS glue and the CSS.
+- `make blog/ingest` against the dev database ran the migrations and upserted the one post, so
+  `toml` 1.2.1 parses the real `content/posts/*.md` frontmatter.
+- Cargo: all four bumped checksums match the crates.io sparse index. None is yanked, and `epage`
+  published all four (2026-11-04 and 11-06), as with the `toml` crates in SEC-021.
+- Action pin: tag `v2.89.1` resolves through the GitHub API to commit `682ce6c3…` (a commit
+  object), `Release 2.89.1` by Taiki Endo, 2026-11-02. It is an ancestor of the action's `main`
+  and unsigned, like every release commit of this action. Between the pins are 66 commits: 62 by
+  `taiki-e`, plus four from outside contributors that add new tools (`similarity-rs`, `mold`,
+  `ld.mold`, `yq`). Besides `manifests/`, the changelog, `TOOLS.md`, the action's own CI and its
+  codegen, they change **`main.sh`** in two places:
+  - `yq` joins the list of tools whose binary is renamed.
+  - The `cargo-binstall` fallback now looks the binary up on `PATH` instead of assuming
+    `${cargo_bin}`, and puts the downloaded one first on `PATH`.
+
+  Neither path runs for these jobs: both tools are installed from a manifest, and binstall is
+  only the fallback for tools without one. `action.yml` and `manifests/cargo-audit.json` are
+  byte-identical at both pins. In `uv.json` only `0.13`, `0.13.6` and `latest` moved, and the
+  `0.12.19` entry the uv job installs is identical. Both jobs therefore install the same
+  binaries as before.
+- Python: both `pytest` 9.2.0 file hashes in `uv.lock` match PyPI's JSON API, and the release was
+  uploaded 2026-10-27, past the week-old window. All 13 locked releases match PyPI and none is
+  yanked (SEC-020 follow-up). `uv audit --frozen` reports nothing in 13 packages. 9.2.0's breaking
+  changes miss this suite: every `parametrize` call passes only the name and the values, the ini
+  options are strings, and the one session fixture is a module-level function.
+- e2e: with the 1.100 debug build serving the dev database on `127.0.0.1:3100` (another local
+  container holds `:3000`), `uv run --locked pytest --base-url http://127.0.0.1:3100` gave
+  **19 passed, 2 skipped**, the SEC-023 result. The skips are the post-page tests, by design. A
+  rerun with `-W error::pytest.PytestRemovedIn10Warning` gave the same result, so none of 9.2.0's
+  new deprecations fires.
+- Docker: `docker build .` succeeded locally on the pinned `ade39a71…` base. It was an `arm64`
+  build on Apple Silicon; the publish run builds `amd64`. It took three attempts, for reasons
+  outside this change:
+  - The first stalled for 26 minutes before BuildKit ran a single step; the cause was not
+    determined.
+  - The second hung in `rustup target add wasm32-unknown-unknown`. That was release-day trouble
+    at `static.rust-lang.org`: a request from a container got a 503 after 24 s, while the next
+    fetched the same `rust-std` tarball at 5 MB/s.
+  - The third passed that step in 170 s. Inside the builder, rustup then synced the `1.100`
+    channel and downloaded its own 1.100.0 (SEC-021's follow-up). cargo-leptos built the wasm
+    (`wasm-release`, 35 s) and the native release (1m 26s) under `--locked`. It compiled `toml`
+    1.2.1, and none of `libsqlite3-sys`, `sqlx-sqlite` or `sqlx-mysql`.
+
+  The runtime image (81.5 MB) runs as `nonroot`. Run against the dev database, it applied the
+  migrations and served `/`, `/blog`, `/about`, `/sitemap.xml` and `/llms.txt` with 200 and an
+  unknown path with 404, logging no warning or error. If the release's publish run fails in a
+  rustup download, re-run it.
+
+**Follow-ups.**
+- **Remove the ignore** once a sqlx release allows `libsqlite3-sys` 0.39: bump sqlx, then
+  `cargo update -p libsqlite3-sys`. A Dependabot sqlx bump alone will not move it, because 0.30.1
+  still satisfies the relaxed range. Then delete the entry in `.cargo/audit.toml` (and the file,
+  if it is empty) and check that the audit stays green. Until then, the ignore would also hide a
+  real build of the crate. Before any change that adds SQLite, re-run the `cargo tree` check
+  above.
+- `proc-macro-error2`'s E0365 report will become a hard error in a future Rust release. When it
+  does, the toolchain bump needs a leptos release whose macros no longer depend on it (SEC-007
+  tracks the crate as `unmaintained`).
+- SEC-021's compiler follow-up still holds at 1.100. `channel = "1.100"` and the image's
+  preinstalled `1.100.0` are different toolchain names, so the builder's rustup syncs the channel
+  itself. Today both are 1.100.0.
+- Cargo 1.100 stabilizes a minimum publish age for dependency resolution (RFC 3923), which could
+  enforce the week-old rule for crates the way `exclude-newer` does for the uv lock. It is not
+  adopted here. SEC-019 left crates to lockfile review, and the fixes of SEC-022 and SEC-023 were
+  younger than a week when they were needed. That decision is open.
+
 ## Open findings
 
-**None.** SEC-013 was the last one open and closed on 2026-08-31, verified against live AWS
-rather than against Terraform state — every finding of the 2026-08-23 audit (SEC-001 … SEC-012)
-plus SEC-013 … SEC-016 and SEC-018 … SEC-023 is now Fixed above, and SEC-017 is Accepted.
+**SEC-024 is Pending**: RUSTSEC-2026-0459 is ignored in `.cargo/audit.toml` until a sqlx
+release lets `libsqlite3-sys` move to 0.39. The crate is in the lock but compiled into no build.
+Apart from it, SEC-013 was the last finding open and closed on 2026-08-31, verified against live
+AWS rather than against Terraform state. Every finding of the 2026-08-23 audit (SEC-001 … SEC-012)
+plus SEC-013 … SEC-016 and SEC-018 … SEC-023 is Fixed above, and SEC-017 is Accepted.
 
 Two things are *tracked but not findings against this repository*, both recorded in full on their
 entries: `typst-resume`'s OIDC trust lists only the plain subject spelling and will break opaquely
