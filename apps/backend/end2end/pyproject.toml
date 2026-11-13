@@ -15,7 +15,7 @@ requires-python = "==3.14.*"
 # Dependabot (uv ecosystem) bumps the pin and the lock together.
 dependencies = [
     "playwright==1.64.1",
-    "pytest==9.1.1",
+    "pytest==9.2.0",
     "pytest-playwright==0.10.0",
 ]
 
