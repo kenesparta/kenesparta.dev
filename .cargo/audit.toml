@@ -1,0 +1,24 @@
+# cargo-audit configuration, read by `cargo audit` locally and in audit.yml.
+#
+# Every ignore needs a SECURITY.md entry, a reason here, and the condition that
+# removes it. Do not loosen audit.yml's `--deny` flags instead (SEC-007).
+
+[advisories]
+ignore = [
+    # RUSTSEC-2026-0459 (SECURITY.md SEC-024): SQLite < 3.54.0 returns
+    # uninitialized page-cache memory for a crafted database/-wal pair, in the
+    # copy bundled by libsqlite3-sys < 0.39.0.
+    #
+    # libsqlite3-sys is in Cargo.lock but compiled into nothing:
+    # `cargo tree -i libsqlite3-sys --target all --all-features -e all`
+    # matches no package. It is locked only because sqlx 0.9.0's `chrono`,
+    # `uuid` and `migrate` features carry weak `sqlx-sqlite?/…` references,
+    # and Cargo locks weakly referenced optional dependencies even when nothing
+    # enables them. No upgrade can clear it today: sqlx-sqlite 0.9.0 requires
+    # `>=0.30.1, <0.38.0`, and the fix is 0.39.0.
+    #
+    # Remove this when a sqlx release allows libsqlite3-sys 0.39 (upstream
+    # launchbadge/sqlx#4502, on main since 2026-11-08): bump sqlx, then
+    # `cargo update -p libsqlite3-sys`, and check that the audit stays green.
+    "RUSTSEC-2026-0459",
+]
