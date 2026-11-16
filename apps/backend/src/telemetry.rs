@@ -19,15 +19,31 @@ use axum::http::HeaderMap;
 use axum::middleware::Next;
 use axum::response::Response;
 
+/// The AWS SDK's crates, capped at `warn` whatever `RUST_LOG` says: at `info`
+/// `aws-config` logs the credentials it loaded — access key id and account id
+/// (SECURITY.md SEC-025). Credentials never belong in a log, debugging included.
+const AWS_SDK_CAP: [&str; 5] = [
+    "aws_config=warn",
+    "aws_sdk_dsql=warn",
+    "aws_sigv4=warn",
+    "aws_smithy_runtime=warn",
+    "aws_smithy_runtime_api=warn",
+];
+
 /// Install the global JSON subscriber. `RUST_LOG` filters; `info` when unset.
 pub fn init() {
+    let filter = AWS_SDK_CAP.iter().fold(
+        tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        |filter, directive| match directive.parse() {
+            Ok(directive) => filter.add_directive(directive),
+            Err(_) => filter,
+        },
+    );
     tracing_subscriber::fmt()
         .json()
         .flatten_event(true)
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
+        .with_env_filter(filter)
         .init();
 }
 

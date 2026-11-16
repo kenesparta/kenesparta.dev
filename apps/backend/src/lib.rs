@@ -9,11 +9,19 @@
 pub mod app;
 
 #[cfg(feature = "ssr")]
+pub mod caching;
+#[cfg(feature = "ssr")]
 pub mod composition;
 #[cfg(feature = "ssr")]
 pub mod configuration;
 #[cfg(feature = "ssr")]
+pub mod dsql;
+#[cfg(feature = "ssr")]
 pub mod http;
+#[cfg(feature = "ssr")]
+pub mod migrations;
+#[cfg(feature = "ssr")]
+pub mod origin_gate;
 #[cfg(feature = "ssr")]
 pub mod persistence;
 #[cfg(feature = "ssr")]

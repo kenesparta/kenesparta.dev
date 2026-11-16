@@ -46,7 +46,7 @@ const PAGES: &[(&str, &str, &str)] = &[
 pub async fn sitemap(State(state): State<ServerState>) -> Response {
     let posts = match published_posts(&state).await {
         Ok(posts) => posts,
-        Err(response) => return response,
+        Err(status) => return status.into_response(),
     };
 
     let mut body = String::from(
@@ -74,7 +74,7 @@ pub async fn sitemap(State(state): State<ServerState>) -> Response {
 pub async fn feed(State(state): State<ServerState>) -> Response {
     let posts = match published_posts(&state).await {
         Ok(posts) => posts,
-        Err(response) => return response,
+        Err(status) => return status.into_response(),
     };
 
     let mut body = String::from(
@@ -105,7 +105,7 @@ pub async fn feed(State(state): State<ServerState>) -> Response {
 pub async fn llms_txt(State(state): State<ServerState>) -> Response {
     let posts = match published_posts(&state).await {
         Ok(posts) => posts,
-        Err(response) => return response,
+        Err(status) => return status.into_response(),
     };
 
     let mut body = format!("# Ken Esparta\n\n> {}\n\n", one_line(META_DESCRIPTION));
@@ -243,7 +243,10 @@ pub async fn rewrite_markdown_suffix(mut request: Request, next: Next) -> Respon
 }
 
 /// Every published post: sitemap and feed must be complete, so no page cap.
-async fn published_posts(state: &ServerState) -> Result<Vec<BlogPostSummaryDTO>, Response> {
+/// The failure is a bare status, not a `Response`: it is always the same 500,
+/// and a `Response` in the `Err` variant makes every `Result` 128+ bytes
+/// (clippy `result_large_err`).
+async fn published_posts(state: &ServerState) -> Result<Vec<BlogPostSummaryDTO>, StatusCode> {
     state
         .container
         .blog
@@ -252,7 +255,7 @@ async fn published_posts(state: &ServerState) -> Result<Vec<BlogPostSummaryDTO>,
         .await
         .map_err(|error| {
             tracing::error!(error = %error, "listing published posts failed");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            StatusCode::INTERNAL_SERVER_ERROR
         })
 }
 

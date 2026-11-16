@@ -5,15 +5,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 This is a personal portfolio website built with Leptos (Rust full-stack web framework) using Axum as the backend
-server. It runs as a Docker container on a shared AWS Lightsail **instance** (Ubuntu 24.04) behind CloudFront and
-Caddy, with the image published to a private **ECR** repository (`kenespartadev`). Deployment is pull-based: a
-systemd timer on the host polls ECR and recreates the container when `latest` moves — CI's only AWS access is an OIDC
-role that can push to that one repository, from `v*` tags only. Blog posts are Markdown files in `content/posts/`
-ingested into a **self-hosted PostgreSQL 18 container** on the same host.
+server. It runs as the AWS **Lambda function `blog`** in the account `personal-infra-prod`, behind CloudFront, from
+an image published to a private **ECR** repository (`kenespartadev`); the AWS Lambda Web Adapter inside the image
+replays each invocation as an HTTP request to the unchanged server (personal-infra rev 2.33, AD-18). CI's only AWS
+access is an OIDC role, from `v*` tags only, that can push to that one repository and point that one function at the
+pushed digest. Blog posts are Markdown files in `content/posts/` ingested into **Aurora DSQL** (personal-infra
+AD-19), reached with IAM tokens: there is no database password anywhere.
 
-**All infrastructure lives in the sibling repo `../personal-infra`** — Terraform for the AWS edge (Route 53, ACM,
-CloudFront, the instance, the backup bucket) and Ansible for everything on the host (Docker, Caddy, Postgres, deploy
-timers, backups, hardening). Its `spec/` directory is the authoritative record of every infra decision; read it before
+Until personal-infra's cutover (its N9) the public name still reaches the old Lightsail host, which runs the last
+image the old account received, from its own Postgres; it gets no new release (its G63).
+
+**All infrastructure lives in the sibling repo `../personal-infra`** — Terraform for everything AWS: Route 53, ACM,
+CloudFront, the Lambda functions and their URLs, the Aurora DSQL clusters and their backups, ECR and the CI roles.
+Its old host (Ansible, Caddy, Postgres) lives on only in its worktree of `pre-account-migration` until its N13. Its `spec/` directory is the authoritative record of every infra decision; read it before
 proposing infra changes, and make them there, not here. This repo builds and ships the application image; nothing
 more. The old `tf/` directory (Lightsail Container Service, ECR, per-repo CloudFront) was deleted in the migration —
 do not recreate it. Today's ECR repository and its push role are personal-infra's (spec AD-15), not a revival of it.
@@ -45,19 +49,24 @@ dependency for an advisory — and read it before changing any of those.
 - **Testing**: Playwright for Python (`pytest-playwright`, end-to-end tests), managed by uv — no Node toolchain
 - **Architecture**: DDD / hexagonal — a Cargo workspace with a library crate per Bounded Context (`crates/bc-*`), a
   `shared-kernel`, and a single binary (`apps/backend`) that hosts the Leptos app plus all adapters and wiring
-- **Database**: self-hosted `postgres:18` container (managed by personal-infra) on the instance's internal `web`
-  Docker network. The app reaches it as `postgres:5432` via Docker DNS — never `127.0.0.1`, which inside a
-  bridge-networked container is the container's own loopback. Access via SQLx — runtime `query_as` (no `query!`
-  macros, so no DATABASE_URL at build time); migrations in `apps/backend/migrations/` embedded via `sqlx::migrate!()`
-  and run at startup
+- **Database**: in production, **Aurora DSQL** (cluster `blog`, schema `blog`), a PostgreSQL 16 dialect with no
+  passwords: `dsql.rs` mints an IAM token per connection with the function's role and connects as `blog_app`, which
+  may only `SELECT` (personal-infra §5.22). Locally, a plain `postgres` container (`DATABASE_URL`). `Configuration`
+  picks DSQL when `DSQL_ENDPOINT` is set. Access via SQLx — runtime `query_as` (no `query!` macros, so no
+  DATABASE_URL at build time). Migrations in `apps/backend/migrations/` are embedded via `sqlx::migrate!()` and run
+  **only by `ingest`** (`migrations::run`, locking off), never at server startup. Every migration is written for DSQL
+  and still valid on Postgres: first line `-- no-transaction`, exactly one DDL statement, no arrays (`tags` is
+  `jsonb`), no `ADD COLUMN` with a constraint, no plain `CREATE INDEX` (personal-infra G51). Never edit an applied
+  migration, comments included: sqlx checks each file's checksum and refuses to run past a changed one
 - **Secrets**: sops + age — `secrets/{dev,prod}.enc.env` (dotenv, committed encrypted), recipients in `.sops.yaml`,
   age key at `~/.config/sops/age/keys.txt` (`SOPS_AGE_KEY_FILE` exported by the Makefile). These files only feed
-  local tooling (dev server, ingest CLI) — the production container's env comes from personal-infra's Ansible Vault,
-  not from here
+  local tooling (dev server, local ingest). Production has no database secret at all, and the function's only
+  secret, `ORIGIN_SECRET`, comes from personal-infra's Terraform
 - **Containerization**: Docker (multi-stage build → distroless runtime)
 - **CI/CD**: GitHub Actions (`publish-image.yml`) — on `vX.Y.Z` tags, assumes the OIDC role
-  `github-actions-ecr-push-kenespartadev`, builds the image and pushes `<registry>/kenespartadev:vX.Y.Z` + `:latest`
-  to private ECR. That is the whole pipeline; the host's timer does the rollout
+  `github-actions-ecr-push-kenespartadev`, builds the image (`provenance: false`), pushes
+  `<registry>/kenespartadev:vX.Y.Z` + `:latest` to private ECR, then runs `aws lambda update-function-code` with the
+  pushed digest. That last step is the deploy
 
 ## Repository Structure
 
@@ -74,15 +83,19 @@ dependency for an advisory — and read it before changing any of those.
 │           └── application/   # use_cases.rs (List/GetBySlug/GetById/Upsert/Prune), dto.rs (BlogPostDTO…)
 ├── content/
 │   └── posts/             # Blog posts: Markdown + TOML frontmatter (source of truth)
-├── secrets/               # sops/age-encrypted dotenv files (committed; DATABASE_URL for local tooling)
+├── secrets/               # sops/age-encrypted dotenv files (committed; DATABASE_URL for local tooling only)
 ├── .sops.yaml             # sops creation rules (age recipients)
 ├── apps/
 │   └── backend/           # The Leptos app (SSR bin + hydrate lib) + all adapters
 │       ├── src/
 │       │   ├── main.rs · lib.rs           # server + wasm entry points
 │       │   ├── bin/ingest.rs              # ingest CLI (feature `ingest`): markdown → HTML → upsert
-│       │   ├── configuration.rs           # env config (DATABASE_URL, required — fails fast)
-│       │   ├── composition.rs             # DI Container (PgPool + migrations → use cases)
+│       │   ├── configuration.rs           # env config: DATABASE_URL locally, DSQL_* in production (fails fast)
+│       │   ├── composition.rs             # connect (pool, DSQL refresher) + wire (use cases); never migrates
+│       │   ├── caching.rs                 # Cache-Control for files from disk: hashed /pkg a year, public/ a day
+│       │   ├── dsql.rs                    # Aurora DSQL: IAM token per connection, refresh before each request
+│       │   ├── migrations.rs              # runs the embedded migrations, lock off — ingest only
+│       │   ├── origin_gate.rs             # 403 without CloudFront's X-Origin-Verify (SEC-025)
 │       │   ├── http.rs                    # ServerState + server-fn handler
 │       │   ├── seo.rs                     # crawler endpoints: /sitemap.xml, /feed.xml, /llms.txt,
 │       │   │                              #   /blog/<slug>.md + its rewrite middleware (ssr-only)
@@ -90,7 +103,7 @@ dependency for an advisory — and read it before changing any of those.
 │       │   ├── telemetry.rs               # JSON tracing subscriber, shared by server + ingest bins
 │       │   ├── persistence/blog_postgres.rs   # PostgresBlogRepository (implements the port)
 │       │   └── app/                       # UI: app.rs (routing/shell), components/, pages/, constants.rs, api.rs (server fns)
-│       ├── migrations/       # SQLx migrations (embedded into the binary)
+│       ├── migrations/       # SQLx migrations, written for DSQL (embedded; one DDL each, `-- no-transaction`)
 │       ├── style/            # parts/*.css (source) → main.css (generated by `make css`)
 │       ├── public/           # Static assets (incl. robots.txt)
 │       ├── end2end/          # Playwright tests: pytest + uv (pyproject.toml, uv.lock, tests/test_*.py)
@@ -134,36 +147,37 @@ the Makefile exports `SOPS_AGE_KEY_FILE` because sops' macOS default path differ
 
 **Blog authoring (markdown → Postgres):**
 ```bash
-make blog/ingest          # upsert content/posts/*.md into the dev DB
-make blog/publish         # upsert into PRODUCTION (via SSH tunnel, see below)
+make blog/ingest          # migrate + upsert content/posts/*.md into the dev DB
+make blog/publish         # migrate + upsert into PRODUCTION's Aurora DSQL (IAM, see below)
 ```
 Posts use TOML frontmatter between `+++` fences (title, summary, date RFC 3339,
 optional slug/author/tags/status; status defaults to "draft"). The ingest CLI
 (`apps/backend/src/bin/ingest.rs`, feature `ingest`) renders markdown with
 pulldown-cmark and upserts by slug — idempotent, `post_id`/`created_at` preserved.
 Each post is stored twice: `content` (rendered HTML, what the pages display) and
-`content_md` (the body verbatim, what `/blog/<slug>.md` serves to agents). Posts
-ingested before `content_md` existed have it empty and 404 on the `.md` URL until
-re-ingested — after deploying that migration, re-run `make blog/publish`.
+`content_md` (the body verbatim, what `/blog/<slug>.md` serves to agents).
+`ingest` applies pending migrations before it upserts, and it is the only thing that
+does: the web server never migrates. So a fresh local database needs one
+`make blog/ingest` before the dev server can list anything, and a release whose code
+needs a new migration needs `make blog/publish` **before** its tag. A local database
+created before the DSQL baseline (2026-11-16) must be recreated:
+`docker compose -f docker-compose.dev.yml rm -s -f postgres && docker volume rm kenespartadev_pg-data`, then
+`docker compose -f docker-compose.dev.yml up -d postgres` and `make blog/ingest`. Never `down -v`: it
+also deletes the dev container's cargo and target caches.
 Deleting a `.md` file does NOT delete its DB row; pass `PRUNE=1` (→ `--prune`)
 to also delete DB posts with no matching file, making the DB mirror `content/posts/`.
 
-**How `blog/publish` reaches production:** the production Postgres has **no published
-port** (deliberate — personal-infra acceptance criteria 8/9), so the target opens an
-SSH tunnel first: it asks the host (`ubuntu@origin.kenesparta.dev`, key
-`~/.ssh/personal-infra` — same as personal-infra's `ansible.cfg`) for the postgres
-container's IP on the `web` Docker network (`docker inspect`; the IP can change across
-restarts, so it is fetched every run), forwards `127.0.0.1:5433` to it via a
-control-master ssh that a `trap` always tears down, and runs the ingest with the
-`DATABASE_URL` host rewritten `@postgres:5432` → `@127.0.0.1:5433` on the fly.
-The ingest binary is compiled **before** the tunnel opens and with no secret in its
-environment (`make blog/build`: `env -u DATABASE_URL cargo build --locked …`), then
-executed as `target/debug/ingest` under `sops exec-env`. Never fold that back into a
-`cargo run` under sops: it would hand the production `DATABASE_URL` to every `build.rs`
-and proc-macro in the dependency graph while the tunnel is open (SECURITY.md, SEC-001).
-`secrets/prod.enc.env` therefore keeps the **canonical in-network URL**
-(`…@postgres:5432/blog`) — do not point it at the tunnel. Override
-`PUBLISH_SSH_KEY` / `PUBLISH_SSH_HOST` / `TUNNEL_PORT` if those defaults move.
+**How `blog/publish` reaches production:** directly, over TLS, with an IAM token and no
+secret (SECURITY.md SEC-025). The target reads two things from `../personal-infra`
+(`PUBLISH_INFRA`), the repository that owns them: the SSO profile in its
+`terraform/.env` and the `blog` cluster endpoint in its `dsql_endpoints` output. It then
+runs `ingest` as **`blog_owner`**, the schema's owner, to which personal-infra's
+`make dsql/roles` maps both your SSO role and CI's push role. DSQL has no `SET ROLE`, so
+connecting as the role is the only way to own what a migration creates: a table created
+by `blog_owner` inherits the grant that lets the function's `blog_app` read it.
+`blog/build` still compiles the binary first with no secret in its environment (SEC-001),
+and the run unsets `DATABASE_URL`. Until personal-infra's N9 the public site reads the
+old host's Postgres, so a post published here is live only on the new function.
 
 **Building for production:**
 ```bash
@@ -328,14 +342,22 @@ The navigation bar (StickyNavBar) is conditionally rendered on all pages except 
 
 Multi-stage Dockerfile (build context = workspace root):
 1. **Builder stage**: Uses `rust:1.100-bookworm`, installs cargo-leptos, `COPY . .`, builds the CSS bundle, runs
-   `cd apps/backend && cargo leptos build --release`
-2. **Runtime stage**: Uses distroless image, copies the `backend` binary + `kdevsite/` site assets, runs as non-root
+   `cargo leptos build --release --precompress` with `LEPTOS_HASH_FILES=true`: the bundle is named after its contents
+   (`pkg/kenespartadev.<hash>.{css,js,wasm}`, the hashes in `hash.txt`) and every file gets a `.br`/`.gz` beside it
+2. **Runtime stage**: Uses distroless image, copies the `backend` binary, `hash.txt` **beside it** (leptos reads it from
+   the executable's directory) and `kdevsite/`, adds the Lambda Web Adapter, sets `LEPTOS_HASH_FILES=true`, runs as
+   non-root. `caching.rs` then gives `/pkg/*` a year and `immutable`, which is also what lets personal-infra's edge
+   cache it (its §5.16); `public/` gets a day, rendered pages nothing. Under `cargo leptos watch` the names are not
+   hashed and `/pkg/*` is `no-cache`, so the two can never disagree
 
 Environment variables for production:
 - `LEPTOS_OUTPUT_NAME=kenespartadev`, `LEPTOS_SITE_ADDR="0.0.0.0:3000"`, `LEPTOS_SITE_ROOT=/app/kdevsite`,
   `LEPTOS_SITE_PKG_DIR=pkg`, `RUST_LOG` — baked into the image / set per project in personal-infra's `projects.yml`
-- `DATABASE_URL` — injected at runtime from the host's root-owned `.env` (rendered by Ansible from its Vault);
-  never baked into the image and never sourced from this repo's `secrets/`
+- `DSQL_ENDPOINT`, `DSQL_USER` (`blog_app`), `DSQL_SCHEMA` (`blog`) and `ORIGIN_SECRET` — set on the function by
+  personal-infra's Terraform. None is baked into the image; the only secret, `ORIGIN_SECRET`, never comes from this
+  repo's `secrets/`
+- `AWS_LWA_PORT` (3000), `AWS_LWA_READINESS_CHECK_PROTOCOL` (`tcp`), `AWS_LWA_INVOKE_MODE` (`response_stream`) —
+  the Lambda Web Adapter's, from the same place. The adapter itself is copied into the image, pinned by digest
 
 Build args (compile time, not runtime env):
 - `APP_VERSION` / `APP_BUILD` — the release tag and commit SHA, passed by `publish-image.yml` and read by
@@ -345,18 +367,16 @@ Build args (compile time, not runtime env):
 
 ### Production Topology (personal-infra)
 
-Request path: `kenesparta.dev` (Route 53 apex ALIAS) → CloudFront (ACM cert, `Managed-CachingDisabled` — pure
-pass-through so SSR responses stay fresh) → `origin.kenesparta.dev` (A record to the instance's static IP) → Caddy
-(Let's Encrypt cert; rejects any request missing the `X-Origin-Verify` header CloudFront injects) → `blog` container
-(`blog:3000`) on the internal `web` Docker network. No container publishes host ports except Caddy; the instance is
-shared with the other projects in personal-infra's `projects.yml`.
+Request path: `kenesparta.dev` (Route 53 apex ALIAS) → CloudFront (ACM cert, a caching-disabled policy that forwards
+the geo headers) → the **Function URL** of `blog` → the Lambda Web Adapter → this server on `:3000`.
+`origin_gate::check` answers 403 to any request without CloudFront's `X-Origin-Verify` header, because the Function
+URL itself is public (SEC-025). That check was Caddy's on the old host. Lambda's own 403, with a JSON body, means a
+missing permission rather than the gate (personal-infra G46).
 
-On the host, all managed by Ansible (hand edits are reverted):
-- `/opt/personal-infra/projects/blog/` — the real `docker-compose.yml` + root-owned `.env` (0600)
-- `personal-infra-deploy@blog.timer` — every 10 minutes runs `docker compose pull && up -d`. The compose file pins
-  the deliberately **moving** `latest` tag: the pull is the release mechanism
-- Nightly (03:00 UTC) `pg_dump` of every project database to `s3://kenesparta-infra-backups/postgres/<db>/`
-- Database administration is `ssh` + `docker exec psql` — there is no network path to Postgres from outside
+The function holds no state. Data is in Aurora DSQL, backed up daily by AWS Backup with 35 days kept; logs go to the
+CloudWatch group `/kenesparta/blog` through the function's `logging_config`. Database administration is
+`make dsql/connect DB=blog` in personal-infra: an admin `psql` with an IAM token. Until personal-infra's N9 the old
+host serves the public name, and its description is in that repository's worktree of `pre-account-migration`.
 
 ### CI/CD Pipeline
 
@@ -376,10 +396,11 @@ controls are the release gate — and, because the push role trusts only
 The workflow builds the image and pushes `<registry>/kenespartadev:vX.Y.Z` + `:latest` to the private ECR repository. It
 authenticates by assuming `github-actions-ecr-push-kenespartadev` over GitHub OIDC — trusted only from this repo's
 `refs/tags/v*`, allowed to push to that one repository and nothing else — so there is no stored AWS key; the only
-repository secret is the role's ARN, `AWS_ECR_PUSH_ROLE_ARN` (set once, from `make output NAME=ecr_push_role_arns` in
-personal-infra). The registry host is `amazon-ecr-login`'s `registry` output, never a literal in this repo. No
-Terraform runs here. The host's deploy timer pulls the moved `latest` from ECR within ~10 minutes, with its own
-pull-only key (personal-infra spec AD-15, §5.18). `audit.yml` runs dependency audits.
+repository secret is the role's ARN, `AWS_ECR_PUSH_ROLE_ARN` (set from `make output NAME=ecr_push_role_arns` in
+personal-infra — the new account's role since its N5). The registry host is `amazon-ecr-login`'s `registry` output,
+never a literal in this repo. No Terraform runs here. The build pushes a single manifest (`provenance: false`, since
+Lambda refuses an index — personal-infra G49), and the "Deploy to Lambda" step points the function at the pushed
+digest and waits; a function never pulls by itself (G48). `audit.yml` runs dependency audits.
 
 **No build cache, deliberately.** The workflow carried `cache-from`/`cache-to: type=gha` until it was measured on
 the v0.4.1 run: ~205s per build (40% of an 8m29s run, 87.5s of it just "preparing build cache for export") spent
@@ -404,8 +425,9 @@ The `debug = "line-tables-only"` win under *Compile Times* does not apply to CI,
 info already off. Of those three optimizations only `-Zthreads` would bite into the 212s native build, at the cost
 of putting nightly in the release image.
 
-**Cost:** the $12/mo Lightsail instance is shared across all personal-infra projects; CloudFront, S3, the backup
-bucket and ECR storage (the lifecycle keeps `latest` plus the newest 30 images) are pay-per-use. No managed database.
+**Cost:** the function and the DSQL cluster sit inside their free tiers at this traffic (personal-infra §14 rev 2.32
+measured ~2,000 DPU a month against 100,000 free); CloudFront and ECR storage (the lifecycle keeps `latest` plus the
+newest 30 images) are pay-per-use.
 
 ## Cargo.toml Configuration
 

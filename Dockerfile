@@ -28,8 +28,19 @@ ARG APP_VERSION
 ARG APP_BUILD
 
 # Build the CSS bundle from its parts (no Sass), then compile the app.
+# - LEPTOS_HASH_FILES names the bundle after its contents
+#   (pkg/kenespartadev.<hash>.{css,js,wasm}) and records the three hashes in
+#   hash.txt, which the server reads to link them (app.rs shell). Every release
+#   is then a new set of URLs, and caching.rs gives them a year: what lets
+#   personal-infra's edge keep /pkg/* (its §5.16, G31). The path is absolute so
+#   it does not depend on where cargo-leptos resolves a relative one.
+# - --precompress writes a .br and a .gz beside every file under kdevsite, and
+#   the file handler serves those as they are instead of compressing the wasm
+#   again on every request.
 RUN cat apps/backend/style/parts/*.css > apps/backend/style/main.css \
- && cd apps/backend && cargo leptos build --release
+ && cd apps/backend \
+ && LEPTOS_HASH_FILES=true LEPTOS_HASH_FILE_NAME=/app/target/release/hash.txt \
+    cargo leptos build --release --precompress
 
 
 FROM gcr.io/distroless/cc-debian12:latest@sha256:e5d81ddde149641e2a9ba55be4545bc125c67de07508b03ba4c22e6eb0ded5aa AS runtime
@@ -40,6 +51,19 @@ WORKDIR /app
 # target root under kdevsite (site-root in apps/backend/Cargo.toml).
 COPY --from=site-builder /app/target/release/backend /app/backend
 COPY --from=site-builder /app/target/kdevsite /app/kdevsite
+# hash.txt goes NEXT TO THE BINARY: leptos looks for it in the directory of the
+# running executable, not in the site root. Without it, a hashed build links
+# bundle names that do not exist.
+COPY --from=site-builder /app/target/release/hash.txt /app/hash.txt
+
+# The AWS Lambda Web Adapter, as a Lambda extension (personal-infra AD-18,
+# spec §5.21). On Lambda it receives each invocation and replays it as an HTTP
+# request to the server below on AWS_LWA_PORT, so the server is unchanged and
+# still just listens. Off Lambda the extension directory is ignored, so
+# `docker run` and `make dev/up` behave as before. Pinned by the digest of the
+# multi-platform index (SECURITY.md SEC-003); bump the version and digest
+# together.
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0@sha256:17cfd08eff1dfea3f6a9a1e9c65fdac80aa4919b6085e746615530f43f57d2f1 /lambda-adapter /opt/extensions/lambda-adapter
 
 USER nonroot:nonroot
 
@@ -48,6 +72,10 @@ ENV LEPTOS_OUTPUT_NAME=kenespartadev
 ENV LEPTOS_SITE_ADDR="0.0.0.0:3000"
 ENV LEPTOS_SITE_ROOT=/app/kdevsite
 ENV LEPTOS_SITE_PKG_DIR=pkg
+# The build above hashed the bundle's names; this makes the server link the
+# hashed names and give them a year of cache. Unset, it would look for
+# pkg/kenespartadev.css and friends, which this image does not contain.
+ENV LEPTOS_HASH_FILES=true
 
 EXPOSE 3000
 

@@ -55,6 +55,9 @@ sqlx = { version = "0.9.0", default-features = false, features = [
     "chrono",
     "migrate",
     "macros",
+    # tags is a jsonb column since the move to Aurora DSQL, which stores no
+    # array columns (personal-infra G51); sqlx::types::Json maps it.
+    "json",
 ] }
 
 # Ingest CLI only (feature `ingest` in apps/backend).

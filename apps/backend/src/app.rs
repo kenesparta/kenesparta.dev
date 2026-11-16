@@ -24,8 +24,6 @@ pub fn App() -> impl IntoView {
 
         <Link rel="dns-prefetch" href={BUCKET_URL}/>
         <Link rel="preconnect" href={BUCKET_URL} crossorigin="anonymous"/>
-        <Link rel="preload" href="/pkg/kenespartadev.css" as_="style"/>
-        <Stylesheet id="leptos" href="/pkg/kenespartadev.css"/>
 
         <FontsPrefetch fonts=GLOBAL_FONTS/>
 
@@ -122,6 +120,13 @@ pub fn shell(options: LeptosOptions) -> impl IntoView {
                 <meta charset="utf-8"/>
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <AutoReload options=options.clone() />
+                // The bundle's stylesheet, by its hashed name in a release
+                // build (LEPTOS_HASH_FILES, read from hash.txt beside the
+                // binary) and by the plain one under `cargo leptos watch`,
+                // whose reloader swaps it by the `leptos` id. In the <head>
+                // itself the parser finds it at once, which is why the
+                // separate preload link that App used to carry is gone.
+                <HashedStylesheet options=options.clone() id="leptos"/>
                 <HydrationScripts options/>
                 <MetaTags/>
             </head>

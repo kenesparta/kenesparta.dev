@@ -3,21 +3,29 @@
 
 use axum::Router;
 use axum::extract::{FromRef, Request, State};
+use axum::handler::Handler;
 use axum::response::IntoResponse;
 use leptos::prelude::LeptosOptions;
 use leptos_axum::{LeptosRoutes, generate_route_list};
 use tower_http::compression::CompressionLayer;
 use tower_http::trace::TraceLayer;
 
+use std::sync::Arc;
+
 use crate::app::{App, shell};
 use crate::composition::Container;
-use crate::{security, seo, telemetry};
+use crate::dsql::Refresher;
+use crate::origin_gate::OriginGate;
+use crate::{dsql, origin_gate, security, seo, telemetry};
 
-/// Router state: Leptos options + the dependency container.
+/// Router state: Leptos options, the dependency container, the origin gate
+/// and — on DSQL — the token refresher.
 #[derive(Clone, FromRef)]
 pub struct ServerState {
     pub leptos_options: LeptosOptions,
     pub container: Container,
+    pub origin_gate: OriginGate,
+    pub db_refresh: Option<Arc<Refresher>>,
 }
 
 /// Handle Leptos server functions with the `Container` available in the
@@ -38,6 +46,8 @@ pub async fn handle_server_fns(
 /// order. `main` binds it to a socket; tests drive it directly.
 pub fn build_app(state: ServerState) -> Router {
     let routes = generate_route_list(App);
+    let origin_gate = state.origin_gate.clone();
+    let db_refresh = state.db_refresh.clone();
 
     let router = Router::new()
         // Leptos server functions, with the container in the reactive context.
@@ -62,8 +72,23 @@ pub fn build_app(state: ServerState) -> Router {
                 move || shell(options.clone())
             },
         )
-        .fallback(leptos_axum::file_and_error_handler::<ServerState, _>(shell))
+        .fallback(
+            leptos_axum::file_and_error_handler::<ServerState, _>(shell).layer(
+                // Cache lifetimes for files read from disk, and nothing else:
+                // a rendered page never passes through here (caching.rs).
+                axum::middleware::from_fn_with_state(
+                    state.leptos_options.clone(),
+                    crate::caching::static_files,
+                ),
+            ),
+        )
         .layer(CompressionLayer::new())
+        // The DSQL token is renewed before any handler can open a connection
+        // with a stale one (personal-infra G52). A no-op off DSQL.
+        .layer(axum::middleware::from_fn_with_state(
+            db_refresh,
+            dsql::refresh,
+        ))
         .with_state(state);
 
     // The Markdown-variant rewrite has to run BEFORE routing, and
@@ -79,6 +104,14 @@ pub fn build_app(state: ServerState) -> Router {
         // error handler and the data resource panics the worker — a crafted
         // URL must not take a thread down.
         .layer(axum::middleware::from_fn(seo::redirect_trailing_slash))
+        // Only requests that came through CloudFront get past here (SEC-025).
+        // Outside the rewrites, so a refused request does no work; inside the
+        // headers and the access log, so it is still logged and still carries
+        // the security headers.
+        .layer(axum::middleware::from_fn_with_state(
+            origin_gate,
+            origin_gate::check,
+        ))
         // Security headers on every response, the redirects above included.
         .layer(axum::middleware::from_fn(security::headers))
         // Both outside the rewrite (added after it) so they see the public
@@ -118,6 +151,8 @@ mod tests {
         build_app(ServerState {
             leptos_options,
             container: wire(pool),
+            origin_gate: crate::origin_gate::OriginGate::disabled(),
+            db_refresh: None,
         })
     }
 

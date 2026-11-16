@@ -44,6 +44,12 @@ tracing-subscriber = { workspace = true, optional = true }
 
 # Ingest CLI only (feature `ingest`): markdown → HTML + TOML frontmatter.
 pulldown-cmark = { workspace = true, optional = true }
+# Server-only: the IAM token Aurora DSQL takes as a password (personal-infra
+# §5.22). aws-config finds the credentials — the execution role's on Lambda,
+# the SSO profile on the laptop — and aws-sdk-dsql signs the token locally;
+# minting one makes no network call.
+aws-config = { version = "1.8", optional = true, default-features = false, features = ["rt-tokio", "default-https-client", "sso", "credentials-process"] }
+aws-sdk-dsql = { version = "1.81", optional = true, default-features = false, features = ["rt-tokio", "default-https-client"] }
 toml = { workspace = true, optional = true }
 
 [features]
@@ -67,6 +73,8 @@ ssr = [
     "dep:uuid",
     "dep:tracing",
     "dep:tracing-subscriber",
+    "dep:aws-config",
+    "dep:aws-sdk-dsql",
 ]
 # The `ingest` bin: everything the server has, plus the markdown pipeline.
 ingest = ["ssr", "dep:pulldown-cmark", "dep:toml"]

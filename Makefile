@@ -78,29 +78,22 @@ blog/build:
 blog/ingest: blog/build
 	sops exec-env $(SECRETS) '$(INGEST_BIN) content/posts $(if $(PRUNE),--prune)'
 
-## blog/publish:  publica los posts en PRODUCCIÓN
-##                El Postgres de prod corre en la instancia SIN puerto publicado
-##                (personal-infra, acceptance 8/9): se abre un túnel SSH a la IP
-##                del contenedor en la red `web` y se reescribe el host del
-##                DATABASE_URL (postgres:5432 -> 127.0.0.1:$(TUNNEL_PORT)).
-##                El binario se compila ANTES (blog/build, sin secretos): el
-##                túnel solo se abre para ejecutarlo.
-PUBLISH_SSH_KEY  ?= $(HOME)/.ssh/personal-infra
-PUBLISH_SSH_HOST ?= ubuntu@origin.kenesparta.dev
-TUNNEL_PORT      ?= 5433
-# In ~/.ssh (0700), not /tmp (SECURITY.md SEC-011): a world-writable dir would
-# let any local process pre-create the control socket — ssh then silently
-# disables multiplexing and the EXIT trap can no longer close the tunnel.
-TUNNEL_SOCK      := $(HOME)/.ssh/kdev-pg-tunnel.sock
+## blog/publish:  publica los posts en PRODUCCIÓN (Aurora DSQL, personal-infra §5.22)
+##                Aplica las migraciones pendientes y hace upsert de content/posts.
+##                Sin secretos ni túnel: el token IAM se firma con tu perfil SSO
+##                y se conecta como blog_owner (mapeado a tu rol por
+##                `make dsql/roles` en personal-infra). PRUNE=1 también borra.
+# The endpoint and the SSO profile are read from personal-infra, the repository
+# that owns them, so neither is written here: the profile name carries the
+# account id (SECURITY.md SEC-025). The binary is still built first with no
+# secret in its environment (blog/build, SEC-001), and runs with DATABASE_URL
+# unset so a stray shell variable cannot redirect it.
+PUBLISH_INFRA   ?= ../personal-infra
+PUBLISH_PROFILE ?= $(shell sed -n 's/^export TF_VAR_aws_sso_profile=//p' $(PUBLISH_INFRA)/terraform/.env 2>/dev/null)
 
 blog/publish: blog/build
-	@set -e; \
-	ssh -S $(TUNNEL_SOCK) -O exit $(PUBLISH_SSH_HOST) 2>/dev/null || true; \
-	rm -f $(TUNNEL_SOCK); \
-	PGIP=$$(ssh -i $(PUBLISH_SSH_KEY) -o ConnectTimeout=10 -o StrictHostKeyChecking=yes $(PUBLISH_SSH_HOST) \
-	  "docker inspect -f '{{.NetworkSettings.Networks.web.IPAddress}}' postgres"); \
-	echo "postgres container en $$PGIP — abriendo túnel 127.0.0.1:$(TUNNEL_PORT)"; \
-	ssh -i $(PUBLISH_SSH_KEY) -f -N -M -S $(TUNNEL_SOCK) -o ExitOnForwardFailure=yes \
-	  -o StrictHostKeyChecking=yes -L $(TUNNEL_PORT):$$PGIP:5432 $(PUBLISH_SSH_HOST); \
-	trap "ssh -S $(TUNNEL_SOCK) -O exit $(PUBLISH_SSH_HOST) 2>/dev/null || true" EXIT; \
-	sops exec-env secrets/prod.enc.env 'DATABASE_URL=$$(printf %s "$$DATABASE_URL" | sed "s/@postgres:5432/@127.0.0.1:$(TUNNEL_PORT)/") $(INGEST_BIN) content/posts $(if $(PRUNE),--prune)'
+	@test -n "$(PUBLISH_PROFILE)" || { echo "no SSO profile: $(PUBLISH_INFRA)/terraform/.env not found"; exit 1; }
+	@endpoint="$$(terraform -chdir=$(PUBLISH_INFRA)/terraform output -json dsql_endpoints | jq -r '.blog // empty')"; \
+	test -n "$$endpoint" || { echo "no DSQL endpoint for blog in $(PUBLISH_INFRA)'s outputs"; exit 1; }; \
+	AWS_PROFILE='$(PUBLISH_PROFILE)' DSQL_ENDPOINT="$$endpoint" DSQL_USER=blog_owner DSQL_SCHEMA=blog \
+	  env -u DATABASE_URL $(INGEST_BIN) content/posts $(if $(PRUNE),--prune)

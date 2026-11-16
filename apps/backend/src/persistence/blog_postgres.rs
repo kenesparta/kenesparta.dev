@@ -8,6 +8,7 @@ use bc_blog::domain::model::{BlogPost, PostStatus};
 use bc_blog::domain::repository::{BlogRepository, RepositoryError};
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
+use sqlx::types::Json;
 use uuid::Uuid;
 
 #[derive(sqlx::FromRow)]
@@ -19,7 +20,9 @@ struct BlogPostRow {
     content_md: String,
     summary: String,
     author: String,
-    tags: Vec<String>,
+    /// jsonb since the move to Aurora DSQL, which stores no array columns
+    /// (personal-infra G51).
+    tags: Json<Vec<String>>,
     status: String,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
@@ -43,7 +46,7 @@ impl From<BlogPostRow> for BlogPost {
             content_md: row.content_md,
             summary: row.summary,
             author: row.author,
-            tags: row.tags,
+            tags: row.tags.0,
         }
     }
 }
@@ -151,7 +154,7 @@ impl BlogRepository for PostgresBlogRepository {
         .bind(&post.content_md)
         .bind(&post.summary)
         .bind(&post.author)
-        .bind(&post.tags)
+        .bind(Json(&post.tags))
         .bind(post.status.as_str())
         .bind(to_utc(post.created_at)?)
         .bind(to_utc(post.updated_at)?)

@@ -1,13 +1,14 @@
-# On every vX.Y.Z tag: build the backend image and push it to the private ECR
-# repository `kenespartadev` as both vX.Y.Z and latest. That IS the whole
-# deploy — the host's systemd timer (personal-infra-deploy@blog, see
-# personal-infra spec AD-5) polls ECR every 10 minutes and runs
-# `docker compose pull && up -d` on `:latest`, so moving `latest` is what makes
-# a release go live (personal-infra spec AD-15, §5.18).
+# On every vX.Y.Z tag: build the backend image, push it to the private ECR
+# repository `kenespartadev` as both vX.Y.Z and latest, then point the Lambda
+# function `blog` at the digest just pushed (personal-infra spec AD-18, §5.21).
+# A pushed tag alone deploys nothing: a function holds a digest and never pulls
+# again (personal-infra G48), so the last step IS the deploy. Schema changes
+# are not applied here: `make blog/publish` runs the migrations, before a
+# release that needs them (SECURITY.md SEC-025).
 #
 # AWS access is an OIDC role, `github-actions-ecr-push-kenespartadev`, whose
 # trust accepts only this repository's refs/tags/v* and whose policy can push
-# to that one ECR repository and nothing else. No long-lived AWS key exists:
+# to that one ECR repository and update that one function, nothing else. No long-lived AWS key exists:
 # the only repository secret is the role's ARN (AWS_ECR_PUSH_ROLE_ARN). The
 # registry host comes from amazon-ecr-login's `registry` output, so the
 # account id is never written into this repo. No Terraform runs here.
@@ -63,11 +64,17 @@ jobs:
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build and push to ECR
+        id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: linux/amd64
           push: true
+          # A single image manifest, not an index: buildx's default provenance
+          # and SBOM attestations turn the push into an OCI image index, which
+          # Lambda refuses (personal-infra G49).
+          provenance: false
+          sbom: false
           # The registry host is the login step's output, not a literal; like
           # every value here it reaches the action as an input, never a shell.
           tags: |
@@ -91,3 +98,16 @@ jobs:
           # OCI provenance metadata: the repository this image was built from.
           labels: |
             org.opencontainers.image.source=${{ github.event.repository.html_url }}
+
+      # The deploy (personal-infra §5.21, G48). By digest, never by tag, so the
+      # function runs exactly what this run built. The digest is a build-push
+      # output, passed through env: rather than interpolated into the script.
+      - name: Deploy to Lambda
+        env:
+          IMAGE_URI: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}@${{ steps.build.outputs.digest }}
+          FUNCTION_NAME: blog
+        run: |
+          aws lambda update-function-code --function-name "$FUNCTION_NAME" --image-uri "$IMAGE_URI" \
+            --query '[FunctionName,LastUpdateStatus]' --output text
+          aws lambda wait function-updated --function-name "$FUNCTION_NAME"
+          aws lambda get-function --function-name "$FUNCTION_NAME" --query 'Code.ResolvedImageUri' --output text

@@ -14,7 +14,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     backend::telemetry::init();
 
     let config = configuration::Configuration::from_env()?;
-    let container = composition::compose(&config).await?;
+    // Fails closed: on Lambda, no ORIGIN_SECRET stops the server here rather
+    // than serving an origin anyone can reach around CloudFront (SEC-025).
+    let origin_gate = backend::origin_gate::OriginGate::from_env()?;
+    let database = composition::connect(&config.database).await?;
+    let container = composition::wire(database.pool);
 
     // Leptos config: in dev cargo-leptos injects it via the environment; in the
     // container the LEPTOS_* variables set it.
@@ -25,6 +29,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = build_app(ServerState {
         leptos_options,
         container,
+        origin_gate,
+        db_refresh: database.refresher,
     });
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;

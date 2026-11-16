@@ -1353,6 +1353,74 @@ The local updates reproduce each PR byte for byte: #29's lock delta, #28's `audi
   adopted here. SEC-019 left crates to lockfile review, and the fixes of SEC-022 and SEC-023 were
   younger than a week when they were needed. That decision is open.
 
+### SEC-025 — The move to Lambda and Aurora DSQL: the origin check moves into the app, production loses its database password, and the SDK's credential log is capped
+
+**Severity:** Medium · **Status:** Fixed in code (2026-11-16); live with the first Lambda release · **Where:**
+`apps/backend/src/{origin_gate,dsql,migrations,configuration,composition,telemetry,http,main}.rs`,
+`apps/backend/src/bin/ingest.rs`, `apps/backend/migrations/`, `Dockerfile`,
+`.github/workflows/publish-image.yml`, `Makefile`, `Cargo.toml`, `apps/backend/Cargo.toml`, `Cargo.lock`
+
+**Finding.** personal-infra rev 2.33 moves this site from its Lightsail host to the Lambda function
+`blog` (AD-18), and its data from the host's Postgres to Aurora DSQL (AD-19). Four security
+properties change with it:
+
+- **The origin check had to move.** Caddy refused any request without CloudFront's
+  `X-Origin-Verify`. The new origin is a Function URL, a public HTTPS endpoint with nothing in
+  front of it but CloudFront.
+- **The production database had a password.** It lived in `secrets/prod.enc.env` and personal-infra's
+  Ansible Vault, and `make blog/publish` reached it through an SSH tunnel (SEC-001, SEC-011). DSQL
+  takes IAM tokens only.
+- **The AWS SDK logs credentials.** At `RUST_LOG=info`, `aws-config` logs the credentials it
+  loaded: the access key id and the account id, with the secret redacted. That was found on the
+  first real run against DSQL, 2026-11-16.
+- **`Configuration` derived `Debug`**, so a `{:?}` would have printed the whole `DATABASE_URL`,
+  password included.
+
+**Change.**
+
+- **`origin_gate`.** It answers 403 unless `X-Origin-Verify` equals `ORIGIN_SECRET`, or
+  `ORIGIN_SECRET_PREVIOUS` while personal-infra rotates the secret.
+  - It compares in constant time, and the secret type's `Debug` prints `<redacted>`.
+  - It fails closed: on Lambda (`AWS_LAMBDA_FUNCTION_NAME` set), a missing or empty `ORIGIN_SECRET`
+    stops the server at startup. Off Lambda it is disabled, since nothing sits in front.
+  - It is mounted inside the security headers and the access log, so a refusal is logged and still
+    carries the headers.
+- **`dsql`.** It mints an IAM token per connection with `aws-sdk-dsql`, signing locally, and renews
+  it before any request once it is ten minutes old (personal-infra G52).
+  - The function connects as `blog_app`, which may only `SELECT`.
+  - `make blog/publish` connects as `blog_owner`, mapped by `AWS IAM GRANT` to the owner's SSO role
+    and to CI's push role. DSQL refuses `SET ROLE`, so each caller is its own role.
+  - No database password exists for production any more, and the SSH tunnel is gone.
+- **Migrations run only from `ingest`.** The baseline is one DDL statement, `-- no-transaction`,
+  with locking off, because DSQL has no advisory locks. The web server never migrates.
+- **`DatabaseConfig` gets a hand-written `Debug`** that prints `Url(<redacted>)`.
+- **`telemetry::init` caps `aws_config`, `aws_sdk_dsql`, `aws_sigv4` and `aws_smithy_runtime*` at
+  `warn`**, whatever `RUST_LOG` says. Credentials do not belong in a log, debugging included.
+- **New dependencies:** `aws-config` 1.8 and `aws-sdk-dsql` 1.81, default features off, server-only.
+  The wasm bundle does not link them.
+- **The image and the deploy.** The Lambda Web Adapter is pinned by digest in the `Dockerfile`, as
+  SEC-003 requires of every image. `publish-image.yml` builds without provenance or SBOM, and deploys
+  by digest.
+
+**Verification (2026-11-16).**
+
+- `cargo test` passed, including 7 gate tests, 5 configuration tests and 1 DSQL test.
+- `cargo clippy -D warnings` raised nothing new. The `result_large_err` in `seo.rs` predates this
+  change, and CI does not run clippy.
+- `cargo audit --deny yanked --deny unsound` passed with the new dependencies.
+- **Against the real cluster:** `ingest` as `blog_owner` applied the baseline and upserted the post.
+  - The tables are owned by `blog_owner`.
+  - `has_table_privilege('blog_app', …)` is `SELECT` only.
+  - After the cap, the run logged no credential line.
+
+**Follow-ups.**
+
+- **`make blog/publish`'s wrapper is untested.** It reads the profile and endpoint from
+  personal-infra. The owner runs it once.
+- **`DATABASE_URL` in `secrets/prod.enc.env`** feeds nothing on the new path. Remove it after
+  personal-infra's N13, when the old host is gone.
+- **SEC-011** (the tunnel's control socket) retires with the tunnel.
+
 ## Open findings
 
 **SEC-024 is Pending**: RUSTSEC-2026-0459 is ignored in `.cargo/audit.toml` until a sqlx

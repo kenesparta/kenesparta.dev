@@ -4,15 +4,19 @@
 //! also bootstraps an empty database. The web app never writes; this bin is
 //! the only write path.
 //!
-//! Usage: `DATABASE_URL=... ingest [content-dir] [--prune]` (default:
-//! `content/posts`). `--prune` deletes every DB post whose slug has no
-//! matching `.md` file, so the database mirrors the content dir exactly.
-//! Typically run via `make blog/ingest` / `make blog/publish` (sops exec-env).
+//! Usage: `ingest [content-dir] [--prune]` (default: `content/posts`), with
+//! the database chosen by the environment (`Configuration::from_env`):
+//! `DATABASE_URL` for the local Postgres, or `DSQL_ENDPOINT` / `DSQL_USER` /
+//! `DSQL_SCHEMA` for production's Aurora DSQL. `--prune`
+//! deletes every DB post whose slug has no matching `.md` file, so the database
+//! mirrors the content dir exactly. It applies pending migrations first: it is
+//! the only migrator. Typically run via `make blog/ingest` (local, sops
+//! exec-env) or `make blog/publish` (production, IAM — no secret at all).
 
 use std::path::Path;
 
-use backend::composition;
 use backend::configuration::Configuration;
+use backend::{composition, migrations};
 use bc_blog::application::use_cases::UpsertPostCommand;
 use pulldown_cmark::{Options, Parser, html};
 use serde::Deserialize;
@@ -121,7 +125,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let config = Configuration::from_env()?;
-    let container = composition::compose(&config).await?;
+    let database = composition::connect(&config.database).await?;
+    // The only migrator (backend::migrations): the web server never runs them.
+    migrations::run(&database.pool).await?;
+    tracing::info!("migrations applied");
+    let container = composition::wire(database.pool);
 
     let mut paths: Vec<_> = std::fs::read_dir(&dir)
         .map_err(|e| format!("cannot read content dir `{dir}`: {e}"))?

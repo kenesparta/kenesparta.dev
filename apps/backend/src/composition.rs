@@ -14,7 +14,8 @@ use bc_blog::domain::repository::BlogRepository;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 
-use crate::configuration::Configuration;
+use crate::configuration::DatabaseConfig;
+use crate::dsql::{Dsql, Refresher};
 use crate::persistence::blog_postgres::PostgresBlogRepository;
 
 /// Dependency container: fully wired use cases. Cheap to clone (Arcs).
@@ -36,21 +37,52 @@ pub struct BlogUseCases {
     pub prune: Arc<PrunePosts>,
 }
 
-pub async fn compose(config: &Configuration) -> Result<Container, Box<dyn std::error::Error>> {
-    // nano container (0.25 vCPU / 512 MB), single instance: 5 connections is
-    // ample and leaves DB headroom for the ingest CLI and psql.
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .acquire_timeout(Duration::from_secs(5))
-        .connect(&config.database_url)
-        .await?;
+/// The pool, and — on DSQL — what keeps its token fresh.
+pub struct Database {
+    pub pool: PgPool,
+    /// `Some` on DSQL: the web server refreshes the token before each request
+    /// (`dsql::refresh`). `None` for a plain Postgres URL.
+    pub refresher: Option<Arc<Refresher>>,
+}
 
-    // Embedded migrations (apps/backend/migrations). Fail fast: an
-    // unreachable/unmigratable DB must abort the deployment, not limp along.
-    sqlx::migrate!().run(&pool).await?;
-    tracing::info!("postgres pool ready, migrations applied");
-
-    Ok(wire(pool))
+/// Connects, and nothing else. Migrations are not run here: on Lambda every
+/// cold start would race to apply them, and DSQL refuses the migrator's
+/// advisory lock (personal-infra G51). `ingest` runs them (`migrations::run`).
+///
+/// # Errors
+///
+/// An unreachable database, or on DSQL a token that cannot be minted. Fail
+/// fast: a function that cannot reach its data must fail at init, not serve.
+pub async fn connect(config: &DatabaseConfig) -> Result<Database, Box<dyn std::error::Error>> {
+    match config {
+        DatabaseConfig::Url(url) => {
+            let pool = PgPoolOptions::new()
+                .max_connections(5)
+                .acquire_timeout(Duration::from_secs(5))
+                .connect(url)
+                .await?;
+            tracing::info!("postgres pool ready");
+            Ok(Database {
+                pool,
+                refresher: None,
+            })
+        }
+        DatabaseConfig::Dsql {
+            endpoint,
+            user,
+            schema,
+        } => {
+            let (pool, refresher) = Dsql::new(endpoint.clone(), user.clone(), schema.clone())
+                .await?
+                .connect()
+                .await?;
+            tracing::info!(user = %user, schema = %schema, "DSQL pool ready");
+            Ok(Database {
+                pool,
+                refresher: Some(refresher),
+            })
+        }
+    }
 }
 
 /// Wire the use cases over an existing pool. Pure construction, no IO — so
