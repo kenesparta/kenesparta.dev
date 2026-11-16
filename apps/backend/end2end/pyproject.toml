@@ -14,7 +14,7 @@ requires-python = "==3.14.*"
 # every file, in uv.lock; `--locked` refuses to run when the two disagree.
 # Dependabot (uv ecosystem) bumps the pin and the lock together.
 dependencies = [
-    "playwright==1.64.1",
+    "playwright==1.65.0",
     "pytest==9.2.0",
     "pytest-playwright==0.10.0",
 ]
