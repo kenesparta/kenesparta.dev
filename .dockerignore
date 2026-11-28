@@ -16,3 +16,6 @@ tf/
 .DS_Store
 Dockerfile*
 docker-compose*
+
+# Keys and certificates never enter the context (personal-infra SEC-11).
+**/*.pem
