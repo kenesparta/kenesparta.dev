@@ -1,5 +1,6 @@
 # On every vX.Y.Z tag: build the backend image, push it to the private ECR
-# repository `kenespartadev` as both vX.Y.Z and latest, then point the Lambda
+# repository `kenespartadev` as vX.Y.Z, wait for ECR's scan of that
+# digest (personal-infra SEC-11), then then point the Lambda
 # function `blog` at the digest just pushed (personal-infra spec AD-18, §5.21).
 # A pushed tag alone deploys nothing: a function holds a digest and never pulls
 # again (personal-infra G48), so the last step IS the deploy. Schema changes
@@ -60,6 +61,14 @@ jobs:
         id: ecr
         uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
 
+      # ECR Public too, so the build pulls the Lambda Web Adapter as an
+      # authenticated user: anonymous pulls share a monthly quota per address,
+      # which GitHub's runners exhaust ("toomanyrequests: Data limit exceeded").
+      - name: Login to ECR Public
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+        with:
+          registry-type: public
+
       - name: Set up buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -79,7 +88,6 @@ jobs:
           # every value here it reaches the action as an input, never a shell.
           tags: |
             ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.ref_name }}
-            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
           # The home-page footer's release stamp (Dockerfile ARGs). ref_name is
           # the tag this run was triggered by, which the `on:` filter limits
           # to vX.Y.Z; both go in as action inputs, never through a shell.
@@ -99,15 +107,56 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.event.repository.html_url }}
 
+      # The scan gate (personal-infra SEC-11): ECR's basic scan of the pushed
+      # digest must report no critical or high finding, or nothing is deployed.
+      # ECR registers the scan a moment after the push returns, and the waiter
+      # fails at once on ScanNotFoundException, so wait for it to exist first.
+      - name: Gate on ECR's scan of the pushed digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          for _ in $(seq 30); do
+            aws ecr describe-image-scan-findings --repository-name "$ECR_REPOSITORY" \
+              --image-id "imageDigest=$DIGEST" --max-items 1 > /dev/null 2>&1 && break
+            sleep 2
+          done
+          aws ecr wait image-scan-complete --repository-name "$ECR_REPOSITORY" --image-id "imageDigest=$DIGEST"
+          findings="$(aws ecr describe-image-scan-findings --repository-name "$ECR_REPOSITORY" \
+            --image-id "imageDigest=$DIGEST" --no-paginate --output json)"
+          jq -e --arg d "$DIGEST" '.imageId.imageDigest == $d and .imageScanStatus.status == "COMPLETE"' \
+            <<< "$findings" > /dev/null || { echo "::error::ECR did not complete the scan of $DIGEST"; exit 1; }
+          echo "ECR $DIGEST: $(jq -c '.imageScanFindings.findingSeverityCounts // {}' <<< "$findings")"
+          jq -e '(.imageScanFindings.findingSeverityCounts // {}) | ((.CRITICAL // 0) + (.HIGH // 0)) == 0' \
+            <<< "$findings" > /dev/null || { echo "::error::the image has critical or high findings: nothing is deployed"; exit 1; }
+
       # The deploy (personal-infra §5.21, G48). By digest, never by tag, so the
       # function runs exactly what this run built. The digest is a build-push
       # output, passed through env: rather than interpolated into the script.
       - name: Deploy to Lambda
         env:
+          DIGEST: ${{ steps.build.outputs.digest }}
           IMAGE_URI: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}@${{ steps.build.outputs.digest }}
           FUNCTION_NAME: blog
         run: |
           aws lambda update-function-code --function-name "$FUNCTION_NAME" --image-uri "$IMAGE_URI" \
             --query '[FunctionName,LastUpdateStatus]' --output text
           aws lambda wait function-updated --function-name "$FUNCTION_NAME"
-          aws lambda get-function --function-name "$FUNCTION_NAME" --query 'Code.ResolvedImageUri' --output text
+          resolved=$(aws lambda get-function --function-name "$FUNCTION_NAME" --query 'Code.ResolvedImageUri' --output text)
+          echo "the function runs $resolved"
+          [ "${resolved##*@}" = "$DIGEST" ] || { echo "::error::Lambda resolved ${resolved##*@}, not $DIGEST"; exit 1; }
+
+      # `latest` moves last, once the function runs the scanned digest: a
+      # recreated function starts from it (personal-infra G48), so an image the
+      # gate refused is never `latest`.
+      - name: Move latest to the deployed digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          image="$(aws ecr batch-get-image --repository-name "$ECR_REPOSITORY" --image-ids "imageDigest=$DIGEST" --output json)"
+          manifest="$(jq -r '.images[0].imageManifest' <<< "$image")"
+          media="$(jq -r '.images[0].imageManifestMediaType' <<< "$image")"
+          if ! out="$(aws ecr put-image --repository-name "$ECR_REPOSITORY" --image-tag latest \
+              --image-digest "$DIGEST" --image-manifest "$manifest" --image-manifest-media-type "$media" 2>&1)"; then
+            grep -q ImageAlreadyExistsException <<< "$out" || { echo "$out" >&2; exit 1; }
+          fi
+          echo "latest -> $DIGEST"
